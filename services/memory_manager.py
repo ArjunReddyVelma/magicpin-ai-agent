@@ -3,7 +3,7 @@ from uuid import uuid4
 
 from config import MAX_HISTORY_MESSAGES
 from models.conversation import Conversation, Message
-from storage.conversation_store import InMemoryConversationStore
+from storage.conversation_store import conversation_store
 
 
 class MemoryManager:
@@ -12,7 +12,7 @@ class MemoryManager:
     """
 
     def __init__(self):
-        self.store = InMemoryConversationStore()
+        self.store = conversation_store
 
     def create_conversation(self, merchant_id: str) -> Conversation:
         conversation = Conversation(

@@ -6,7 +6,7 @@ from services.memory_manager import MemoryManager
 
 class PromptBuilder:
     """
-    Builds OpenAI-compatible chat messages.
+    Builds chat messages that are sent to the LLM.
     """
 
     def __init__(self):
@@ -23,10 +23,9 @@ class PromptBuilder:
         self,
         merchant_id: str,
         session_id: str,
-        latest_user_message: str,
     ):
         """
-        Returns a list of OpenAI-compatible messages.
+        Build the conversation messages for the LLM.
         """
 
         messages = []
@@ -73,13 +72,5 @@ class PromptBuilder:
                         "content": message.content,
                     }
                 )
-
-        # Latest User Message
-        messages.append(
-            {
-                "role": "user",
-                "content": latest_user_message,
-            }
-        )
 
         return messages

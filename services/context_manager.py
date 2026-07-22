@@ -1,10 +1,10 @@
-from storage.context_store import InMemoryContextStore
+from storage.context_store import context_store
 
 
 class ContextManager:
 
     def __init__(self):
-        self.store = InMemoryContextStore()
+        self.store = context_store
 
     def save_context(self, merchant_id, context):
         self.store.save_context(merchant_id, context)

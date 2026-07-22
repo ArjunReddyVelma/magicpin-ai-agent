@@ -1,10 +1,17 @@
-from dotenv import load_dotenv
 import os
+from dotenv import load_dotenv
 
 load_dotenv()
 
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
-APP_NAME = os.getenv("APP_NAME", "Magicpin AI Agent")
-DEBUG = os.getenv("DEBUG", "False") == "True"
-HOST = os.getenv("HOST", "0.0.0.0")
-PORT = int(os.getenv("PORT", 8000))
+# -------------------------
+# Conversation Configuration
+# -------------------------
+
+SESSION_TIMEOUT_MINUTES = 30
+MAX_HISTORY_MESSAGES = 20
+
+# -------------------------
+# LLM Configuration
+# -------------------------
+
+GROQ_API_KEY = os.getenv("GROQ_API_KEY")

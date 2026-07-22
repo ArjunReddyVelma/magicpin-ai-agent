@@ -17,3 +17,6 @@ class InMemoryContextStore:
 
     def delete_context(self, merchant_id):
         self.contexts.pop(merchant_id, None)
+
+# Shared singleton instance
+context_store = InMemoryContextStore()

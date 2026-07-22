@@ -29,3 +29,6 @@ class InMemoryConversationStore:
 
     def exists(self, session_id: str) -> bool:
         return session_id in self._conversations
+    
+# Shared singleton instance
+conversation_store = InMemoryConversationStore()
