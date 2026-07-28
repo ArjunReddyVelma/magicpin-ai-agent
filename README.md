@@ -420,6 +420,4 @@ This project was built to demonstrate backend engineering skills and AI integrat
 
 ---
 
-# ⭐ If you like this project
 
-Please consider giving it a ⭐ on GitHub.
