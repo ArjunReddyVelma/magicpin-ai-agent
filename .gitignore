@@ -18,6 +18,19 @@ venv/
 *.log
 
 # Pytest
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+
+# Virtual environment
+venv/
+.venv/
+
+# Environment variables
+.env
+.env.*
+
 .pytest_cache/
 
 # Coverage
@@ -31,6 +44,3 @@ dist/
 
 # IDE
 .idea/
-
-# Environment variables
-.env.*
