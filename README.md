@@ -333,44 +333,6 @@ Example flow:
 
 ---
 
-# 📷 Screenshots
-
-Create a folder named
-
-```
-docs/
-```
-
-Add screenshots like
-
-```
-swagger-ui.png
-
-chat-api.png
-
-merchant-context.png
-
-conversation-api.png
-```
-
-Then display them like
-
-```markdown
-## Swagger UI
-
-![Swagger](docs/swagger-ui.png)
-
-## Chat Endpoint
-
-![Chat](docs/chat-api.png)
-
-## Merchant Context
-
-![Context](docs/merchant-context.png)
-```
-
----
-
 # 🚀 Future Improvements
 
 - PostgreSQL Integration
