@@ -39,15 +39,16 @@ class PromptBuilder:
         )
 
         # Merchant Context
-        context = self.context_manager.get_context(
-            merchant_id
+        context_record = self.context_manager.get_context(
+            "merchant",
+            merchant_id,
         )
 
-        if context:
+        if context_record:
 
             context_text = "\n".join(
                 f"{key}: {value}"
-                for key, value in context.items()
+                for key, value in context_record.payload.items()
             )
 
             messages.append(
