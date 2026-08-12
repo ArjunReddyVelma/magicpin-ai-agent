@@ -31,4 +31,16 @@ class LLMService:
             temperature=0.7,
         )
 
-        return response.choices[0].message.content
+        if not response.choices:
+            raise RuntimeError(
+                "LLM returned no response choices."
+            )
+
+        content = response.choices[0].message.content
+
+        if not content:
+            raise RuntimeError(
+                "LLM returned an empty response."
+            )
+
+        return content.strip()
