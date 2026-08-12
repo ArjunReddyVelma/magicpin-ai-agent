@@ -1,6 +1,10 @@
 from openai import OpenAI
 
-from config import GROQ_API_KEY
+from config import (
+    GROQ_API_KEY,
+    GROQ_MODEL,
+    LLM_TIMEOUT_SECONDS,
+)
 
 
 class LLMService:
@@ -11,18 +15,18 @@ class LLMService:
     def __init__(self):
         if not GROQ_API_KEY:
             raise ValueError(
-                "GROQ_API_KEY is missing. Check your .env file."
+                "GROQ_API_KEY is missing."
             )
 
         self.client = OpenAI(
             api_key=GROQ_API_KEY,
             base_url="https://api.groq.com/openai/v1",
+            timeout=LLM_TIMEOUT_SECONDS,
         )
 
     def generate(self, messages):
-
         response = self.client.chat.completions.create(
-            model="llama-3.3-70b-versatile",
+            model=GROQ_MODEL,
             messages=messages,
             temperature=0.7,
         )

@@ -4,26 +4,7 @@ __pycache__/
 *.pyo
 *.pyd
 
-# Virtual Environment
-venv/
-.env
-
-# macOS
-.DS_Store
-
-# VS Code
-.vscode/
-
-# Logs
-*.log
-
-# Pytest
-# Python
-__pycache__/
-*.py[cod]
-*.pyo
-
-# Virtual environment
+# Virtual environments
 venv/
 .venv/
 
@@ -31,6 +12,19 @@ venv/
 .env
 .env.*
 
+# macOS
+.DS_Store
+
+# VS Code
+.vscode/
+
+# IDE
+.idea/
+
+# Logs
+*.log
+
+# Pytest
 .pytest_cache/
 
 # Coverage
@@ -41,6 +35,3 @@ htmlcov/
 build/
 dist/
 *.egg-info/
-
-# IDE
-.idea/
