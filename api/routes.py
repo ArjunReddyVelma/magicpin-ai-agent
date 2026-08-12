@@ -1,5 +1,6 @@
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import JSONResponse
+from utils.logger import get_logger
 
 from api.schemas import (
     ContextPushRequest,
@@ -34,7 +35,7 @@ from services.engagement_planner import EngagementPlanner
 
 
 router = APIRouter()
-
+logger = get_logger(__name__)
 
 # -------------------------------------------------------------------
 # Service Instances
@@ -197,12 +198,13 @@ def chat(
             status_code=400,
             detail=str(e),
         )
-
-    except Exception as e:
-
+    except Exception:
+        logger.exception(
+            "Unexpected error while processing chat request"
+        )
         raise HTTPException(
             status_code=500,
-            detail=f"LLM Error: {str(e)}",
+            detail="Internal server error.",
         )
 
 
@@ -229,11 +231,13 @@ def tick(
             actions=actions
         )
 
-    except Exception as e:
-
+    except Exception:
+        logger.exception(
+            "Unexpected error while processing tick request"
+        )
         raise HTTPException(
             status_code=500,
-            detail=f"Tick error: {str(e)}",
+            detail="Internal server error.",
         )
 
 # -------------------------------------------------------------------
@@ -266,9 +270,11 @@ def reply(request: ReplyRequest):
             detail=str(e),
         )
 
-    except Exception as e:
-
+    except Exception:
+        logger.exception(
+            "Unexpected error while processing reply request"
+        )
         raise HTTPException(
             status_code=500,
-            detail=f"Reply error: {str(e)}",
+            detail="Internal server error.",
         )
