@@ -673,6 +673,62 @@ In compliance with the mandatory Checkpoint Protocol:
   5. Settings & Safe Account Deletion with password verification (Checkpoint 5).
   6. Suggested Actions Review Queue with Human-in-the-Loop decision governance (Checkpoint 6).
 
+---
+
+## 16. Phase 6: Final Integration Audit Report
+
+**Branch**: `feature/frontend-core`  
+**Base Phase 5 Commit**: `12bb089` (`origin/feature/ai-chat`)  
+**Audit Status**: **VERIFIED (Quality Gates Satisfied)**  
+**Date**: October 12, 2026  
+
+### 16.1 End-to-End User Journey Audit
+Verified via automated integration test `backend/tests/integration/test_e2e_user_journey.py` against disposable transactional test database `magicpin_ai_agent_test` (development database untouched):
+1. **Merchant Registration**: Creates user, merchant profile, default timezone, and returns session cookie + CSRF token.
+2. **Session Restoration & Sign-Out**: `GET /v1/auth/me` restores active state; `POST /v1/auth/logout` invalidates session and clears cookie.
+3. **Re-Login**: Authenticates with valid credentials; generic error returned for invalid credentials; login rate limiter enforced.
+4. **Merchant Profile Management**: Viewing and editing store attributes (`business_name`, `category`, `location`, `description`, `timezone`) via `GET`/`PATCH /v1/merchant/profile`.
+5. **Context CRUD & Optimistic Concurrency**:
+   - `POST /v1/context` creates canonical context item (`version = 1`).
+   - `PATCH /v1/context/{id}` with `If-Match: "1"` updates content and increments version to 2.
+   - Stale update with `If-Match: "1"` fails with HTTP 409 `STALE_VERSION_CONFLICT`.
+   - `GET /v1/context` filters by `item_type` and `is_active`.
+6. **AI Workspace & Provider Failure Recovery**:
+   - `POST /v1/conversations` creates persistent conversation.
+   - Chat turn generates grounded response with accurate context sources and token metrics.
+   - Provider failure (502 `LLM_PROVIDER_ERROR`) preserves user message marked `failed`.
+   - Re-attempt via `retry_message_id` and unique `idempotency_key` safely recovers turn to `complete`.
+7. **Suggested Actions Review Queue**:
+   - `GET /v1/actions?status=pending` lists review queue items.
+   - `POST /v1/actions/{id}/approve` records merchant approval decision in DB.
+   - Re-approval or dismissal rejected with HTTP 409 `INVALID_ACTION_STATE`.
+   - Strict human-in-the-loop guarantee: zero external messaging or financial execution.
+8. **Account Deletion**:
+   - Requires valid password confirmation; wrong password rejected with HTTP 401 `INVALID_PASSWORD`.
+   - Correct password purges account, user profile, context, and conversations.
+
+### 16.2 Contract, Security & Isolation Audit
+- **Canonical API Alignment**: 20 FastAPI endpoints matching REST architecture; 100% of frontend `apiClient` calls map to backend routes.
+- **Security & CSRF Protection**: Session cookie (`mp_session`) configured with `HttpOnly; SameSite=Lax`; mutating endpoints (`POST`, `PATCH`, `DELETE`) enforce `X-CSRF-Token`.
+- **Tenant Isolation**: Verified across context items, conversations, messages, and suggested actions. Cross-tenant access attempts return HTTP 404 without leaking existence.
+- **Secrets Audit**: Zero API keys or secrets in repository or frontend `dist/` bundle.
+- **Logging Audit**: Application logger records only IDs and error descriptions; zero passwords, tokens, or sensitive data logged.
+
+### 16.3 Production & Deployment Audit
+- **Frontend Bundle**: Production build (`tsc && vite build`) generates 278 kB JS bundle and 28 kB CSS in 1.15s with 0 errors.
+- **Favicon**: Present and served from `/favicon.svg`.
+- **Readiness Probes**: `GET /v1/healthz` and `GET /v1/readyz` check database connectivity.
+- **Deployment Blockers & Pre-Launch Follow-Ups**:
+  - *Blocker (Pre-Launch Legal/Compliance)*: Dedicated static Terms of Service and Privacy Policy pages for public launch.
+  - *Pre-Launch Config*: In cloud environment (Render/Docker), configure `APP_ENV="production"` for `Secure=True` cookies and set `CORS_ORIGINS` to production domain.
+  - *Pre-Launch Infrastructure*: Set up production PostgreSQL database and supply live `GROQ_API_KEY`.
+
+### 16.4 Final Verification Test Results
+- **Full Backend Suite**: **69 passed in 4.02s** (`.venv/bin/pytest backend/tests -v`).
+- **Frontend Test Suite**: **37 passed in 121ms** (`npm --prefix frontend test`).
+- **Frontend Production Build**: **Clean build in 1.15s** (`npm --prefix frontend run build`).
+- **OpenAPI Validation**: **20 endpoints verified** (`app.openapi()`).
+
 
 
 
