@@ -548,12 +548,14 @@ In compliance with the mandatory Checkpoint Protocol:
 2. **Chat Service & Endpoint (`POST /v1/conversations/{conversation_id}/messages`)**:
    - Implemented in `backend/app/services/chat_service.py` and `backend/app/api/v1/routes/conversations.py`.
    - Conversation row-level lock (`with_for_update()`) serializes concurrent turns within a conversation and eliminates race conditions.
+   - Transaction boundary hardening: Row lock is held across the entire turn lifecycle (via `db.flush()` on user message creation/retry) and released strictly upon:
+     - **Success**: atomic commit of complete user message, assistant message, and updated `last_message_at`.
+     - **Provider Failure / Timeout**: commit of user message marked `status="failed"`.
+     - **Exceptions / 4xx errors**: clean rollback ensuring no database transaction or lock is inadvertently left open.
    - User message lifecycle strictly preserves state: message is initially saved as `status="failed"` (or preserved as `failed` during retries) and ONLY marked `status="complete"` after provider generation and response validation succeed.
-   - If AI generation fails: user message remains `status="failed"` in database (preventing silent turn loss) and returns HTTP 502 (`code="LLM_PROVIDER_ERROR"`) with retry details.
    - Idempotency & Safe Retry: supports `Idempotency-Key` header and body field (rejecting mismatches with HTTP 400 `IDEMPOTENCY_KEY_MISMATCH`), and rejects cross-conversation reuse with HTTP 409 `IDEMPOTENCY_KEY_REUSED`.
    - Validates `retry_message_id`: ensures target message exists in the conversation (404), is a user message (400), and has not already completed (409).
-   - Persists assistant responses with model metadata, token usage, and accurate `context_metadata`.
-   - Updates conversation `last_message_at` timestamp.
+   - Multi-session concurrency tests (`backend/tests/integration/test_chat_concurrency.py`) prove that concurrent duplicate requests and concurrent retries across separate database sessions are serialized correctly by PostgreSQL row locks.
 3. **Fail-Safe Rate Limiter Hardening**:
    - In `PostgreSQLLoginRateLimiter` (`backend/app/core/security.py`), ensured that in production (`APP_ENV="production"`) or when database query fails, requests fail safely with HTTP 503 `DEPENDENCY_UNAVAILABLE` rather than silently using process-local state.
 4. **Security & Ownership**:
@@ -564,15 +566,18 @@ In compliance with the mandatory Checkpoint Protocol:
 ### 14.2 Verification Results
 - **Full Backend Test Suite**:
   - Command: `.venv/bin/pytest backend/tests -v`
-  - Result: **59 passed in 2.58s** (100% green across unit, API, integration, and security suites).
+  - Result: **62 passed in 3.66s** (100% green across unit, API, integration, and security suites).
+- **Multi-Session Concurrency Integration Tests**:
+  - `backend/tests/integration/test_chat_concurrency.py`: **3 passed in 1.06s** (verifying PostgreSQL `with_for_update()` row locking, duplicate submission deduplication, retry serialization, and clean lock release).
 - **Frontend Production Build**:
   - Command: `npm --prefix frontend run build` (`tsc && vite build`)
-  - Result: **Passed cleanly in 1.09s** (0 errors).
+  - Result: **Passed cleanly in 1.19s** (0 errors).
 - **OpenAPI Schema Contract Alignment**:
   - Validated via `app.openapi()`: 16 canonical endpoints matching `Magicpin_AI_Agent_OpenAPI_v1.yaml`.
 
 ### 14.3 Next Phase
 - **Phase 6: Frontend Core Screens** (`feature/frontend`).
+
 
 
 

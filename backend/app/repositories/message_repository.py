@@ -73,6 +73,7 @@ class MessageRepository(BaseRepository):
         output_tokens: Optional[int] = None,
         context_metadata: Optional[Any] = None,
         created_at: Optional[datetime] = None,
+        commit: bool = True,
     ) -> Message:
         message = Message(
             conversation_id=conversation_id,
@@ -87,8 +88,11 @@ class MessageRepository(BaseRepository):
             created_at=created_at or datetime.now(timezone.utc),
         )
         self.db.add(message)
-        self.db.commit()
-        self.db.refresh(message)
+        if commit:
+            self.db.commit()
+            self.db.refresh(message)
+        else:
+            self.db.flush()
         return message
 
     def mark_failed(
