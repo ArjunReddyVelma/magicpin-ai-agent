@@ -584,7 +584,7 @@ In compliance with the mandatory Checkpoint Protocol:
 ## 15. Phase 6: Frontend Core Screens (In Progress)
 
 **Branch**: `feature/frontend-core`  
-**Current Checkpoint**: **Checkpoint 2: Dashboard & Merchant Profile (Passed)**  
+**Current Checkpoint**: **Checkpoint 3: Business Context Management (CRUD) (Passed)**  
 **Date**: October 12, 2026  
 
 ### 15.1 Completed Scope
@@ -601,20 +601,31 @@ In compliance with the mandatory Checkpoint Protocol:
    - Honest empty states for zero context items and zero conversations with direct navigation buttons.
    - `MerchantProfileCard`: Viewing profile attributes (business name, category, location, description, timezone, registration date) and inline editing against `PATCH /v1/merchant/profile` with input validation, duplicate submission protection, and server error handling.
    - Preserved design constraints: no purple gradients, pill buttons, fake stats, fake reviews, or unnecessary animations.
+3. **Checkpoint 3: Business Context Management (CRUD)**:
+   - Aligned all context types strictly with the canonical OpenAPI schema and database check constraint: `faq`, `policy`, `business_fact`, `service`, `operating_info` (removed unsupported legacy labels such as `inventory`, `deal`, `general`).
+   - Implemented `ContextPage` (`frontend/src/pages/ContextPage.tsx`) supporting:
+     - Filtering by context type and active status using exact query parameters (`item_type`, `is_active`).
+     - Summary counters for total and active context items.
+     - Create context modal with client-side validation and submission to `POST /v1/context`.
+     - Edit modal with optimistic concurrency control transmitting `expected_version` and `If-Match` header to `PATCH /v1/context/{id}`.
+     - Handled `STALE_VERSION_CONFLICT` (HTTP 409) with a prominent conflict banner showing expected vs. current versions and a "Reload Latest Version" action to prevent silent overwrites.
+     - Quick inline active/inactive toggle with version tracking.
+     - Destructive delete confirmation modal for `DELETE /v1/context/{id}` with clear warning and irreversible action indication.
+     - Comprehensive loading, empty, and partial error recovery states with retry buttons.
 
 ### 15.2 Verification Results
 - **Frontend Automated Test Suite**:
   - Command: `npm --prefix frontend test` (`node --test test/*.test.js`)
-  - Result: **9 passed in 74ms** (API client formatting, CSRF injection, 401 interceptor, error parsing, dashboard data loading, empty states, partial failure isolation, profile updating, and profile input validation).
+  - Result: **15 passed in 75ms** (API client, CSRF injection, 401 handling, dashboard metrics, empty states, failure isolation, profile editing, canonical context filtering, context creation, optimistic concurrency / version header, STALE_VERSION_CONFLICT handling, deletion, and context input validation).
 - **Frontend Production Build**:
   - Command: `npm --prefix frontend run build` (`tsc && vite build`)
-  - Result: **Passed cleanly in 1.14s** (0 TypeScript errors, production assets bundled cleanly).
+  - Result: **Passed cleanly in 1.27s** (0 TypeScript errors, clean production bundle).
 - **Backend Regression Suite**:
   - Command: `.venv/bin/pytest backend/tests -v`
-  - Result: **62 passed in 3.64s** (100% green across unit, API, integration, and security suites).
+  - Result: **62 passed in 3.62s** (100% green across unit, API, integration, and security suites).
 
 ### 15.3 Next Checkpoint
-- **Checkpoint 3: Business Context Management (CRUD)**.
+- **Checkpoint 4: AI Chat Workspace (Conversation list, active conversation view, message history, bounded context display, turn composer, retry affordance)**.
 
 
 

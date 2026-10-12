@@ -4,7 +4,8 @@ import { LoginPage } from './pages/LoginPage';
 import { RegisterPage } from './pages/RegisterPage';
 import { Navbar } from './components/Navbar';
 import { DashboardPage } from './pages/DashboardPage';
-import { BookOpen, MessageSquare, CheckSquare, Settings } from 'lucide-react';
+import { ContextPage } from './pages/ContextPage';
+import { MessageSquare, CheckSquare, Settings } from 'lucide-react';
 
 function AppShell() {
   const { isAuthenticated, isLoading } = useAuth();
@@ -56,21 +57,7 @@ function AppShell() {
           </div>
         )}
 
-        {activeTab === 'context' && (
-          <div className="bg-white border border-surface-200 rounded p-8 text-center space-y-3">
-            <BookOpen className="w-10 h-10 text-emerald-700 mx-auto" />
-            <h2 className="text-base font-semibold text-surface-900">Merchant Context Management</h2>
-            <p className="text-xs text-surface-800 max-w-md mx-auto">
-              CRUD interface for store policies, FAQs, and business facts with optimistic version concurrency.
-            </p>
-            <button
-              onClick={() => setActiveTab('dashboard')}
-              className="text-xs font-medium text-emerald-800 underline"
-            >
-              Return to Dashboard
-            </button>
-          </div>
-        )}
+        {activeTab === 'context' && <ContextPage />}
 
         {activeTab === 'actions' && (
           <div className="bg-white border border-surface-200 rounded p-8 text-center space-y-3">

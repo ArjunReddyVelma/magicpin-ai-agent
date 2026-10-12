@@ -42,7 +42,7 @@ export interface ApiErrorResponse {
   error: ApiErrorDetail;
 }
 
-export type ContextItemType = 'faq' | 'policy' | 'inventory' | 'deal' | 'general';
+export type ContextItemType = 'faq' | 'policy' | 'business_fact' | 'service' | 'operating_info';
 
 export interface ContextItem {
   id: string;
