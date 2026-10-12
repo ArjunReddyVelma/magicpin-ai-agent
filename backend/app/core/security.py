@@ -67,9 +67,11 @@ def verify_csrf_token(submitted_token: str, session_id: uuid.UUID, user_id: uuid
 
 
 from datetime import datetime, timedelta, timezone
+from fastapi import HTTPException, status
 from sqlalchemy import select, func
 from sqlalchemy.orm import Session
 
+from backend.app.core.logging import logger
 from backend.app.models.audit_event import AuditEvent
 
 
@@ -78,7 +80,9 @@ class PostgreSQLLoginRateLimiter:
     PostgreSQL-backed login rate limiter utilizing the audit_events table.
     Enforces shared, stateless rate-limiting across distributed API instances
     without introducing external cache dependencies like Redis.
-    Falls back to in-memory tracking if db session is None.
+    In production (settings.APP_ENV == "production"), requests fail safely with
+    HTTP 503 if the database limiter is unavailable rather than silently falling
+    back to process-local state.
     """
 
     def __init__(self, max_attempts: int = 5, window_seconds: int = 900):
@@ -86,42 +90,62 @@ class PostgreSQLLoginRateLimiter:
         self.window_seconds = window_seconds
         self._memory_failures: Dict[str, List[float]] = {}
 
+    def _fail_safe_dependency_unavailable(self, message: str = "Rate limit service is temporarily unavailable. Please try again later.") -> None:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail={
+                "error": {
+                    "code": "DEPENDENCY_UNAVAILABLE",
+                    "message": message,
+                }
+            },
+        )
+
     def is_rate_limited(self, key: str, db: Optional[Session] = None) -> bool:
         if db is None:
+            if settings.APP_ENV == "production":
+                self._fail_safe_dependency_unavailable()
             now = time.time()
             cutoff = now - self.window_seconds
             attempts = [t for t in self._memory_failures.get(key, []) if t > cutoff]
             self._memory_failures[key] = attempts
             return len(attempts) >= self.max_attempts
 
-        now_utc = datetime.now(timezone.utc)
-        cutoff_dt = now_utc - timedelta(seconds=self.window_seconds)
+        try:
+            now_utc = datetime.now(timezone.utc)
+            cutoff_dt = now_utc - timedelta(seconds=self.window_seconds)
 
-        # Check latest success event for this key
-        last_success_stmt = (
-            select(func.max(AuditEvent.created_at))
-            .where(
-                AuditEvent.event_type == "auth.login_success",
-                AuditEvent.metadata_json.op("->>")("key") == key,
+            # Check latest success event for this key
+            last_success_stmt = (
+                select(func.max(AuditEvent.created_at))
+                .where(
+                    AuditEvent.event_type == "auth.login_success",
+                    AuditEvent.metadata_json.op("->>")("key") == key,
+                )
             )
-        )
-        last_success = db.scalar(last_success_stmt)
-        if last_success is not None:
-            if last_success.tzinfo is None:
-                last_success = last_success.replace(tzinfo=timezone.utc)
-            if last_success > cutoff_dt:
-                cutoff_dt = last_success
+            last_success = db.scalar(last_success_stmt)
+            if last_success is not None:
+                if last_success.tzinfo is None:
+                    last_success = last_success.replace(tzinfo=timezone.utc)
+                if last_success > cutoff_dt:
+                    cutoff_dt = last_success
 
-        failure_count_stmt = (
-            select(func.count(AuditEvent.id))
-            .where(
-                AuditEvent.event_type == "auth.login_failure",
-                AuditEvent.metadata_json.op("->>")("key") == key,
-                AuditEvent.created_at >= cutoff_dt,
+            failure_count_stmt = (
+                select(func.count(AuditEvent.id))
+                .where(
+                    AuditEvent.event_type == "auth.login_failure",
+                    AuditEvent.metadata_json.op("->>")("key") == key,
+                    AuditEvent.created_at >= cutoff_dt,
+                )
             )
-        )
-        count = db.scalar(failure_count_stmt) or 0
-        return count >= self.max_attempts
+            count = db.scalar(failure_count_stmt) or 0
+            return count >= self.max_attempts
+        except HTTPException:
+            raise
+        except Exception as exc:
+            logger.error("Rate limiter check failed: %s", exc)
+            self._fail_safe_dependency_unavailable()
+            return True
 
     def record_failure(
         self,
@@ -132,6 +156,8 @@ class PostgreSQLLoginRateLimiter:
         user_id: Optional[uuid.UUID] = None,
     ) -> None:
         if db is None:
+            if settings.APP_ENV == "production":
+                self._fail_safe_dependency_unavailable()
             now = time.time()
             cutoff = now - self.window_seconds
             attempts = [t for t in self._memory_failures.get(key, []) if t > cutoff]
@@ -139,20 +165,27 @@ class PostgreSQLLoginRateLimiter:
             self._memory_failures[key] = attempts
             return
 
-        event = AuditEvent(
-            user_id=user_id,
-            merchant_id=None,
-            event_type="auth.login_failure",
-            target_type="login_attempt",
-            metadata_json={
-                "key": key,
-                "email": email or "",
-                "ip": ip or "",
-            },
-            created_at=datetime.now(timezone.utc),
-        )
-        db.add(event)
-        db.commit()
+        try:
+            event = AuditEvent(
+                user_id=user_id,
+                merchant_id=None,
+                event_type="auth.login_failure",
+                target_type="login_attempt",
+                metadata_json={
+                    "key": key,
+                    "email": email or "",
+                    "ip": ip or "",
+                },
+                created_at=datetime.now(timezone.utc),
+            )
+            db.add(event)
+            db.commit()
+        except HTTPException:
+            raise
+        except Exception as exc:
+            db.rollback()
+            logger.error("Rate limiter failure record failed: %s", exc)
+            self._fail_safe_dependency_unavailable()
 
     def record_success(
         self,
@@ -164,39 +197,57 @@ class PostgreSQLLoginRateLimiter:
         merchant_id: Optional[uuid.UUID] = None,
     ) -> None:
         if db is None:
+            if settings.APP_ENV == "production":
+                self._fail_safe_dependency_unavailable()
             if key in self._memory_failures:
                 del self._memory_failures[key]
             return
 
-        event = AuditEvent(
-            user_id=user_id,
-            merchant_id=merchant_id,
-            event_type="auth.login_success",
-            target_type="login_attempt",
-            metadata_json={
-                "key": key,
-                "email": email or "",
-                "ip": ip or "",
-            },
-            created_at=datetime.now(timezone.utc),
-        )
-        db.add(event)
-        db.commit()
+        try:
+            event = AuditEvent(
+                user_id=user_id,
+                merchant_id=merchant_id,
+                event_type="auth.login_success",
+                target_type="login_attempt",
+                metadata_json={
+                    "key": key,
+                    "email": email or "",
+                    "ip": ip or "",
+                },
+                created_at=datetime.now(timezone.utc),
+            )
+            db.add(event)
+            db.commit()
+        except HTTPException:
+            raise
+        except Exception as exc:
+            db.rollback()
+            logger.error("Rate limiter success record failed: %s", exc)
+            self._fail_safe_dependency_unavailable()
 
     def reset(self, key: str, db: Optional[Session] = None) -> None:
         if db is None:
+            if settings.APP_ENV == "production":
+                self._fail_safe_dependency_unavailable()
             if key in self._memory_failures:
                 del self._memory_failures[key]
             return
 
-        event = AuditEvent(
-            event_type="auth.login_success",
-            target_type="login_attempt",
-            metadata_json={"key": key},
-            created_at=datetime.now(timezone.utc),
-        )
-        db.add(event)
-        db.commit()
+        try:
+            event = AuditEvent(
+                event_type="auth.login_success",
+                target_type="login_attempt",
+                metadata_json={"key": key},
+                created_at=datetime.now(timezone.utc),
+            )
+            db.add(event)
+            db.commit()
+        except HTTPException:
+            raise
+        except Exception as exc:
+            db.rollback()
+            logger.error("Rate limiter reset failed: %s", exc)
+            self._fail_safe_dependency_unavailable()
 
 
 # Alias for backward compatibility

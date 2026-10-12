@@ -151,3 +151,16 @@ def verify_csrf(
             status_code=status.HTTP_403_FORBIDDEN,
             detail={"error": {"code": "CSRF_TOKEN_INVALID", "message": "Invalid CSRF token"}},
         )
+
+
+from backend.app.ai.provider import LLMProvider
+from backend.app.ai.groq_provider import GroqProvider
+from backend.app.ai.mock_provider import MockLLMProvider
+
+
+def get_llm_provider() -> LLMProvider:
+    """Provides the configured LLM provider instance."""
+    if settings.LLM_PROVIDER == "mock":
+        return MockLLMProvider()
+    return GroqProvider()
+

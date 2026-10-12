@@ -1,14 +1,17 @@
 import uuid
 from datetime import datetime
 from typing import Optional
-from fastapi import APIRouter, Depends, HTTPException, status, Query
+from fastapi import APIRouter, Depends, HTTPException, status, Query, Header
 from sqlalchemy.orm import Session
 
 from backend.app.core.dependencies import (
     get_db,
     get_current_merchant,
     verify_csrf,
+    get_llm_provider,
 )
+from backend.app.ai.provider import LLMProvider
+from backend.app.services.chat_service import ChatService
 from backend.app.models.merchant_profile import MerchantProfile
 from backend.app.repositories.conversation_repository import ConversationRepository
 from backend.app.repositories.message_repository import MessageRepository
@@ -21,6 +24,8 @@ from backend.app.schemas.conversation import (
 from backend.app.schemas.message import (
     MessageResponse,
     MessageListResponse,
+    MessageCreateRequest,
+    ChatResponse,
 )
 
 router = APIRouter(prefix="/conversations", tags=["Conversations & History"])
@@ -174,3 +179,32 @@ def list_conversation_messages(
         page=page,
         page_size=page_size,
     )
+
+
+@router.post(
+    "/{conversation_id}/messages",
+    response_model=ChatResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Send a message and receive a grounded AI assistant response",
+)
+def send_chat_message(
+    conversation_id: uuid.UUID,
+    req: MessageCreateRequest,
+    merchant: MerchantProfile = Depends(get_current_merchant),
+    provider: LLMProvider = Depends(get_llm_provider),
+    idempotency_header: Optional[str] = Header(None, alias="Idempotency-Key"),
+    _: None = Depends(verify_csrf),
+    db: Session = Depends(get_db),
+) -> ChatResponse:
+    chat_service = ChatService()
+    idempotency_key = req.idempotency_key or idempotency_header
+    return chat_service.send_message(
+        merchant=merchant,
+        conversation_id=conversation_id,
+        content=req.content,
+        db=db,
+        provider=provider,
+        idempotency_key=idempotency_key,
+        retry_message_id=req.retry_message_id,
+    )
+
