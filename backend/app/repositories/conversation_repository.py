@@ -97,3 +97,15 @@ class ConversationRepository(BaseRepository):
         self.db.commit()
         self.db.refresh(conversation)
         return conversation
+
+    def delete(
+        self, merchant_id: uuid.UUID, conversation_id: uuid.UUID
+    ) -> bool:
+        conversation = self.get_by_id(
+            merchant_id=merchant_id, conversation_id=conversation_id
+        )
+        if not conversation:
+            return False
+        self.db.delete(conversation)
+        self.db.commit()
+        return True

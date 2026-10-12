@@ -428,6 +428,97 @@ In compliance with the mandatory Checkpoint Protocol:
 ### 12.3 Next Phase
 - **Phase 4: Merchant Context and Conversations** (`feature/context-conversations`).
 
+---
+
+## 13. Phase 4 Completion & Verification Report
+
+**Branch**: `feature/context-conversations`  
+**Status**: **PASSED (Quality Gate Satisfied)**  
+**Date**: October 12, 2026  
+
+### 13.1 Completed Scope
+1. **Authenticated Merchant Context CRUD (`backend/app/api/v1/routes/context.py`)**:
+   - `GET /v1/context`: Lists context items scoped strictly to the authenticated merchant with filtering by `item_type` (`faq`, `policy`, `business_fact`, `service`, `operating_info`) and `is_active`, plus pagination.
+   - `POST /v1/context`: Creates context item initialized at `version = 1`, returns HTTP 201 with `ETag: '"1"'` header. Protected by session authentication and CSRF token verification.
+   - `GET /v1/context/{id}`: Returns single context item scoped to merchant; emits `ETag: f'"{item.version}"'` header. Rejects cross-tenant access with HTTP 404.
+   - `PATCH /v1/context/{id}`: Enforces optimistic concurrency via `If-Match` header (or `expected_version` in body). Increments version atomically. Returns HTTP 409 Conflict (`code="STALE_VERSION_CONFLICT"`) on stale version attempts.
+   - `DELETE /v1/context/{id}`: Deletes merchant context item. Protected by session and CSRF verification.
+2. **Persistent Conversations & Message History (`backend/app/api/v1/routes/conversations.py`)**:
+   - `GET /v1/conversations`: Deterministically ordered listing (`created_at DESC, id DESC`), title search query, status filter (`active`, `archived`), and pagination.
+   - `POST /v1/conversations`: Creates conversation scoped to authenticated merchant. Protected by CSRF token verification.
+   - `GET /v1/conversations/{id}`: Resolves conversation details scoped to merchant.
+   - `PATCH /v1/conversations/{id}`: Updates conversation title or status (e.g. archiving).
+   - `DELETE /v1/conversations/{id}`: Deletes conversation and cascades message deletion.
+   - `GET /v1/conversations/{id}/messages`: Returns paginated message history in deterministic chronological order (`created_at ASC, id ASC`) with `before` timestamp filtering. Strictly enforces conversation ownership by the authenticated merchant.
+3. **OpenAPI Schema Alignment**:
+   - Created typed schemas in `backend/app/schemas/context.py`, `conversation.py`, and `message.py` strictly matching canonical OpenAPI schemas.
+4. **Tenant Isolation & Security**:
+   - Merchant identity is derived exclusively from the authenticated session.
+   - Client-supplied `merchant_id` injection attempts are completely rejected/ignored.
+   - Cross-merchant reads, updates, and deletes return HTTP 404 without leaking resource existence.
+
+### 13.2 Verification Results
+- **Full Backend Test Suite**:
+  - Command: `.venv/bin/pytest backend/tests -v`
+  - Output:
+    ```
+    backend/tests/api/test_auth.py::test_register_success PASSED             [  2%]
+    backend/tests/api/test_auth.py::test_register_duplicate_email_rejection PASSED [  4%]
+    backend/tests/api/test_auth.py::test_register_weak_password_validation PASSED [  7%]
+    backend/tests/api/test_auth.py::test_login_flow_and_generic_errors PASSED [  9%]
+    backend/tests/api/test_auth.py::test_login_rate_limiting PASSED          [ 12%]
+    backend/tests/api/test_auth.py::test_get_me_endpoint PASSED              [ 14%]
+    backend/tests/api/test_auth.py::test_logout_and_session_revocation PASSED [ 17%]
+    backend/tests/api/test_auth.py::test_session_rotation_on_refresh PASSED  [ 19%]
+    backend/tests/api/test_account_deletion_flow PASSED        [ 21%]
+    backend/tests/api/test_context.py::test_context_item_crud_and_etag_lifecycle PASSED [ 24%]
+    backend/tests/api/test_context.py::test_context_optimistic_concurrency_conflict PASSED [ 26%]
+    backend/tests/api/test_context.py::test_context_csrf_and_auth_enforcement PASSED [ 29%]
+    backend/tests/api/test_conversations.py::test_conversation_crud_and_lifecycle PASSED [ 31%]
+    backend/tests/api/test_conversations.py::test_conversation_messages_pagination_and_deterministic_order PASSED [ 34%]
+    backend/tests/api/test_conversations.py::test_conversations_csrf_and_auth_enforcement PASSED [ 36%]
+    backend/tests/api/test_health.py::test_root_endpoint PASSED              [ 39%]
+    backend/tests/api/test_health.py::test_healthz_liveness_endpoint PASSED  [ 41%]
+    backend/tests/api/test_health.py::test_readyz_readiness_endpoint_success PASSED [ 43%]
+    backend/tests/api/test_health.py::test_readyz_readiness_endpoint_db_failure PASSED [ 46%]
+    backend/tests/api/test_merchant_profile.py::test_merchant_profile_crud_and_csrf PASSED [ 48%]
+    backend/tests/api/test_merchant_profile.py::test_merchant_profile_unauthenticated PASSED [ 51%]
+    backend/tests/integration/test_migrations.py::test_alembic_upgrade_downgrade_cycle PASSED [ 53%]
+    backend/tests/integration/test_repositories.py::test_user_repository_crud_and_normalization PASSED [ 56%]
+    backend/tests/integration/test_repositories.py::test_merchant_repository_crud PASSED [ 58%]
+    backend/tests/integration/test_repositories.py::test_context_repository_crud_and_optimistic_concurrency PASSED [ 60%]
+    backend/tests/integration/test_repositories.py::test_conversation_repository_and_deterministic_order PASSED [ 63%]
+    backend/tests/integration/test_repositories.py::test_message_repository_and_history_window PASSED [ 65%]
+    backend/tests/integration/test_repositories.py::test_action_repository_state_transitions PASSED [ 68%]
+    backend/tests/integration/test_repositories.py::test_merchant_isolation PASSED [ 70%]
+    backend/tests/security/test_context_conversation_isolation.py::test_cross_merchant_context_isolation PASSED [ 73%]
+    backend/tests/security/test_context_conversation_isolation.py::test_cross_merchant_conversation_isolation PASSED [ 75%]
+    backend/tests/security/test_context_conversation_isolation.py::test_data_persistence_across_sessions PASSED [ 78%]
+    backend/tests/security/test_security_isolation.py::test_cross_merchant_session_isolation PASSED [ 80%]
+    backend/tests/security/test_security_isolation.py::test_csrf_token_cross_session_binding PASSED [ 82%]
+    backend/tests/security/test_security_isolation.py::test_session_expiration_and_revocation_enforcement PASSED [ 85%]
+    backend/tests/unit/test_config.py::test_default_settings PASSED          [ 87%]
+    backend/tests/unit/test_config.py::test_cors_origins_includes_frontend PASSED [ 90%]
+    backend/tests/unit/test_security.py::test_argon2id_hashing PASSED        [ 92%]
+    backend/tests/unit/test_security.py::test_opaque_session_tokens PASSED   [ 95%]
+    backend/tests/unit/test_security.py::test_session_bound_csrf_tokens PASSED [ 97%]
+    backend/tests/unit/test_security.py::test_login_rate_limiter PASSED      [100%]
+    ============================== 41 passed in 2.12s ==============================
+    ```
+- **Security & Concurrency Quality Gate Highlights**:
+  - `test_context_optimistic_concurrency_conflict`: Verified that stale ETag headers or body versions trigger HTTP 409 Conflict.
+  - `test_cross_merchant_context_isolation`: Verified that Tenant B cannot read, update, or delete Tenant A's context items.
+  - `test_cross_merchant_conversation_isolation`: Verified that Tenant B cannot access or list messages for Tenant A's conversations.
+  - `test_data_persistence_across_sessions`: Verified that records persist in PostgreSQL across logout and re-login.
+  - `test_conversation_messages_pagination_and_deterministic_order`: Verified deterministic chronological sorting and pagination.
+- **Frontend Build Verification**:
+  - Command: `npm --prefix frontend run build` (`tsc && vite build`)
+  - Result: **Passed cleanly in 1.12s** (zero TypeScript or bundle errors).
+
+### 13.3 Next Phase
+- **Phase 5: AI Chat Service and LLM Abstraction** (`feature/ai-chat`).
+
+
 
 
 
