@@ -19,8 +19,8 @@ class Settings(BaseSettings):
     PORT: int = 8000
 
     # Database
-    DATABASE_URL: str = "postgresql+psycopg://postgres:postgres@localhost:5432/magicpin_ai_agent"
-    DATABASE_URL_TEST: str = "sqlite+aiosqlite:///:memory:"
+    DATABASE_URL: str = "postgresql+psycopg://reddy@localhost:5432/magicpin_ai_agent"
+    DATABASE_URL_TEST: str = "postgresql+psycopg://reddy@localhost:5432/magicpin_ai_agent_test"
 
     # LLM Settings
     LLM_PROVIDER: str = "groq"

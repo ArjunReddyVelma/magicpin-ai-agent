@@ -1,5 +1,7 @@
 from fastapi import APIRouter, Response, status
+from fastapi.responses import JSONResponse
 from backend.app.schemas.health import HealthzResponse, ReadyzResponse, ErrorResponse
+from backend.app.db.session import check_database_connection
 
 router = APIRouter()
 
@@ -29,11 +31,23 @@ def healthz() -> HealthzResponse:
     summary="Readiness check for required dependencies",
     tags=["Health"],
 )
-def readyz(response: Response) -> ReadyzResponse:
+def readyz() -> Response:
     """
-    Readiness probe verifying operational state of required backend dependencies.
+    Readiness probe executing SELECT 1 against PostgreSQL to verify connectivity.
     """
-    # In Phase 1 baseline, verifies system readiness without crashing.
-    # In Phase 2, database ping via SQLAlchemy session will be connected.
-    checks = {"database": "ok"}
-    return ReadyzResponse(status="ready", checks=checks)
+    is_db_ready = check_database_connection()
+    if not is_db_ready:
+        return JSONResponse(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            content={
+                "error": {
+                    "code": "DEPENDENCY_UNAVAILABLE",
+                    "message": "Required database dependency is unavailable",
+                }
+            },
+        )
+
+    return JSONResponse(
+        status_code=status.HTTP_200_OK,
+        content={"status": "ready", "checks": {"database": "ok"}},
+    )

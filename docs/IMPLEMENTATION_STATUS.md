@@ -263,4 +263,79 @@ In compliance with the mandatory Checkpoint Protocol:
 ### 10.3 Next Phase
 - **Phase 2: Database and Migrations** (`feature/database`).
 
+---
+
+## 11. Phase 2 Completion & Verification Report
+
+**Branch**: `feature/database`  
+**Status**: **PASSED (Quality Gate Satisfied)**  
+**Date**: October 12, 2026  
+
+### 11.1 Completed Scope
+1. **SQLAlchemy 2.0 ORM Domain Models**:
+   - Implemented declarative models using SQLAlchemy 2.0 type-annotated `Mapped` / `mapped_column` in `backend/app/models/`:
+     - `User`: Primary UUID, normalized unique email, password hash, active status flag, timestamps.
+     - `MerchantProfile`: Primary UUID, 1:1 user foreign key with cascade, business name, category, location, description, timezone (`Asia/Kolkata`), timestamps.
+     - `UserSession`: Primary UUID, user foreign key, hashed session token, expiration and revocation timestamps, last seen tracker.
+     - `ContextItem`: Merchant foreign key, item type (`faq`, `policy`, `inventory`, `deal`, `general`), title, content, `metadata_json` (JSONB), optimistic concurrency `version` integer, compound indexes.
+     - `Conversation`: Merchant foreign key, title, status (`active`, `archived`), `last_message_at` index, timestamps.
+     - `Message`: Conversation foreign key with cascade, role (`user`, `assistant`), status (`complete`, `failed`), token usage counts, `context_metadata` (JSONB), deterministic `created_at` timestamp index.
+     - `SuggestedAction`: Merchant foreign key, optional conversation foreign key, action type (`reply_draft`, `summary`, `recommendation`, `follow_up`), title, description, payload JSONB, state machine status (`pending`, `approved`, `dismissed`), created by (`assistant`), reviewed timestamp, compound status/creation index.
+     - `AuditEvent`: User & merchant nullable foreign keys, event type, target type/ID, `metadata_json` (JSONB), timestamp index.
+2. **Alembic Reversible Migrations**:
+   - Initialized Alembic configuration in `backend/alembic.ini` and `backend/migrations/env.py`.
+   - Automated dynamic URL routing without credential leakage (`ALEMBIC_DATABASE_URL` override > config > settings).
+   - Created reversible migration `backend/migrations/versions/0001_initial_schema.py` covering all tables, indexes, foreign keys, and check constraints.
+   - Verified clean upgrade to `head`, rollback to `base`, and re-upgrade to `head` on disposable test database.
+3. **Scoped Repositories & Optimistic Concurrency**:
+   - Built parameterized SQLAlchemy 2.0 repositories in `backend/app/repositories/`:
+     - `UserRepository`: Case-insensitive email normalization, creation, lookup.
+     - `MerchantRepository`: 1:1 merchant lookup and profile updating.
+     - `ContextRepository`: Strict merchant scoping, optimistic concurrency version checking returning `(item, is_conflict)` with atomic version bumping, paginated search.
+     - `ConversationRepository`: Scoped listing with deterministic ordering (`created_at DESC, id DESC`), title search, status filter.
+     - `MessageRepository`: Scoped message retrieval in chronological order (`created_at ASC, id ASC`), bounded history window retrieval (`get_recent_history`), failure marking.
+     - `ActionRepository`: Scoped listing, pending action counts, validated state machine transitions (`pending` -> `approved` / `dismissed`).
+4. **Database-Backed Readiness Probe**:
+   - Updated `GET /v1/readyz` in `backend/app/api/v1/routes/health.py` to execute `SELECT 1` via `check_database_connection()`.
+   - Returns HTTP 200 `{"status": "ready", "checks": {"database": "ok"}}` when database is healthy.
+   - Returns HTTP 503 `{"error": {"code": "DEPENDENCY_UNAVAILABLE", "message": "Required database dependency is unavailable"}}` when database connectivity fails.
+5. **Database Isolation & Safety**:
+   - Development database (`magicpin_ai_agent`) preserved and untouched.
+   - Test suite strictly targets disposable database (`magicpin_ai_agent_test`).
+   - Transactional savepoint isolation (`join_transaction_mode="create_savepoint"`) in pytest fixtures prevents test contamination.
+
+### 11.2 Verification Results
+- **Backend Test Suite**:
+  - Command: `.venv/bin/pytest backend/tests -v`
+  - Output:
+    ```
+    backend/tests/api/test_health.py::test_root_endpoint PASSED              [  7%]
+    backend/tests/api/test_health.py::test_healthz_liveness_endpoint PASSED  [ 14%]
+    backend/tests/api/test_health.py::test_readyz_readiness_endpoint_success PASSED [ 21%]
+    backend/tests/api/test_health.py::test_readyz_readiness_endpoint_db_failure PASSED [ 28%]
+    backend/tests/integration/test_migrations.py::test_alembic_upgrade_downgrade_cycle PASSED [ 35%]
+    backend/tests/integration/test_repositories.py::test_user_repository_crud_and_normalization PASSED [ 42%]
+    backend/tests/integration/test_repositories.py::test_merchant_repository_crud PASSED [ 50%]
+    backend/tests/integration/test_repositories.py::test_context_repository_crud_and_optimistic_concurrency PASSED [ 57%]
+    backend/tests/integration/test_repositories.py::test_conversation_repository_and_deterministic_order PASSED [ 64%]
+    backend/tests/integration/test_repositories.py::test_message_repository_and_history_window PASSED [ 71%]
+    backend/tests/integration/test_repositories.py::test_action_repository_state_transitions PASSED [ 78%]
+    backend/tests/integration/test_repositories.py::test_merchant_isolation PASSED [ 85%]
+    backend/tests/unit/test_config.py::test_default_settings PASSED          [ 92%]
+    backend/tests/unit/test_config.py::test_cors_origins_includes_frontend PASSED [100%]
+    ============================== 14 passed in 0.96s ==============================
+    ```
+- **Security Isolation Verification**:
+  - `test_merchant_isolation` successfully proves that tenant B cannot read, update, or approve actions/context items of tenant A by ID substitution.
+- **Frontend Build Verification**:
+  - Command: `npm --prefix frontend run build` (`tsc && vite build`)
+  - Result: **Passed cleanly in 1.11s** (zero TypeScript or bundle errors).
+- **Database Safety Verification**:
+  - Development database `magicpin_ai_agent` inspected and confirmed untouched.
+  - Test database `magicpin_ai_agent_test` automatically migrated and downgraded to base after test completion.
+
+### 11.3 Next Phase
+- **Phase 3: Authentication and Merchant Profiles** (`feature/auth-and-profiles`).
+
+
 

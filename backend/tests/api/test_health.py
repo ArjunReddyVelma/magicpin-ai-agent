@@ -18,9 +18,19 @@ def test_healthz_liveness_endpoint():
     assert response.json() == {"status": "ok"}
 
 
-def test_readyz_readiness_endpoint():
+def test_readyz_readiness_endpoint_success(monkeypatch):
+    monkeypatch.setattr("backend.app.api.v1.routes.health.check_database_connection", lambda: True)
     response = client.get("/v1/readyz")
     assert response.status_code == 200
     data = response.json()
     assert data["status"] == "ready"
     assert data["checks"]["database"] == "ok"
+
+
+def test_readyz_readiness_endpoint_db_failure(monkeypatch):
+    monkeypatch.setattr("backend.app.api.v1.routes.health.check_database_connection", lambda: False)
+    response = client.get("/v1/readyz")
+    assert response.status_code == 503
+    data = response.json()
+    assert data["error"]["code"] == "DEPENDENCY_UNAVAILABLE"
+    assert "unavailable" in data["error"]["message"].lower()
