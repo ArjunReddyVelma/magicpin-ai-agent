@@ -6,7 +6,8 @@ import { Navbar } from './components/Navbar';
 import { DashboardPage } from './pages/DashboardPage';
 import { ContextPage } from './pages/ContextPage';
 import { WorkspacePage } from './pages/WorkspacePage';
-import { CheckSquare, Settings } from 'lucide-react';
+import { SettingsPage } from './pages/SettingsPage';
+import { CheckSquare } from 'lucide-react';
 
 function AppShell() {
   const { isAuthenticated, isLoading } = useAuth();
@@ -70,21 +71,7 @@ function AppShell() {
           </div>
         )}
 
-        {activeTab === 'settings' && (
-          <div className="bg-white border border-surface-200 rounded p-8 text-center space-y-3">
-            <Settings className="w-10 h-10 text-emerald-700 mx-auto" />
-            <h2 className="text-base font-semibold text-surface-900">Merchant Settings</h2>
-            <p className="text-xs text-surface-800 max-w-md mx-auto">
-              Merchant profile configuration, timezone selection, and account controls.
-            </p>
-            <button
-              onClick={() => setActiveTab('dashboard')}
-              className="text-xs font-medium text-emerald-800 underline"
-            >
-              Return to Dashboard
-            </button>
-          </div>
-        )}
+        {activeTab === 'settings' && <SettingsPage />}
       </main>
 
       {/* Product Footer */}

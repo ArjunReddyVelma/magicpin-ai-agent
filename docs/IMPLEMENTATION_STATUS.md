@@ -623,19 +623,31 @@ In compliance with the mandatory Checkpoint Protocol:
      - Strict archived conversation guardrails: composer is disabled and warning banner advises re-activation, aligning with backend HTTP 400 `CONVERSATION_ARCHIVED`.
      - Clean session expiration (401) and CSRF error isolation.
 
+5. **Checkpoint 5: Settings & Account Management**:
+   - Implemented `SettingsPage` (`frontend/src/pages/SettingsPage.tsx`) and integrated into `App.tsx`:
+     - Reused existing `MerchantProfileCard` for store profile viewing and editing with validation and error handling, preventing code duplication.
+     - User identity overview displaying registered account details (name, email login identifier, user UUID, creation timestamp, active status).
+     - Session security card detailing opaque hashed `mp_session` cookies (`SameSite=Lax`, `HttpOnly`) and session-bound CSRF protection (`X-CSRF-Token`).
+     - Session logout action invalidating session on backend (`POST /v1/auth/logout`) and clearing local state.
+     - Permanent account deletion via `DELETE /v1/auth/account`:
+       - Clear irreversible warning banner and dedicated modal dialog.
+       - Mandatory current-password verification.
+       - Server validation error handling (e.g., HTTP 401 `INVALID_PASSWORD`) displaying exact feedback without closing modal or navigating away.
+       - Client authentication state cleared only after backend confirms successful deletion, transitioning cleanly to login screen.
+
 ### 15.2 Verification Results
 - **Frontend Automated Test Suite**:
   - Command: `npm --prefix frontend test` (`node --test test/*.test.js`)
-  - Result: **23 passed in 95ms** (100% green across auth/api, dashboard/profile, context CRUD, and workspace chat suites).
+  - Result: **30 passed in 83ms** (100% green across auth/api, dashboard/profile, context CRUD, workspace chat, and settings/account suites).
 - **Frontend Production Build**:
   - Command: `npm --prefix frontend run build` (`tsc && vite build`)
-  - Result: **Passed cleanly in 1.16s** (0 TypeScript errors, 254 kB bundle).
+  - Result: **Passed cleanly in 1.19s** (0 TypeScript errors, 265 kB bundle).
 - **Backend Regression Suite**:
   - Command: `.venv/bin/pytest backend/tests -v`
-  - Result: **62 passed in 3.54s** (100% green across unit, API, integration, and security suites).
+  - Result: **62 passed in 3.66s** (100% green across unit, API, integration, and security suites).
 
 ### 15.3 Next Checkpoint
-- **Checkpoint 5: Suggested Actions & Human-in-the-Loop Review Queue**.
+- **Checkpoint 6: Drafts & Suggested Actions Review Queue**.
 
 
 

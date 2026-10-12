@@ -19,6 +19,7 @@ interface AuthContextType {
     location?: string;
   }) => Promise<void>;
   logout: () => Promise<void>;
+  deleteAccount: (password: string) => Promise<void>;
   refreshProfile: () => Promise<void>;
   clearError: () => void;
 }
@@ -128,6 +129,21 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
+  const deleteAccount = async (password: string) => {
+    setError(null);
+    try {
+      await api.deleteAccount(password);
+      clearSession();
+    } catch (err: unknown) {
+      if (err instanceof ApiClientError) {
+        setError(err.message);
+      } else {
+        setError('Failed to delete account.');
+      }
+      throw err;
+    }
+  };
+
   const refreshProfile = async () => {
     try {
       const updated = await api.getMerchantProfile();
@@ -151,6 +167,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         login,
         register,
         logout,
+        deleteAccount,
         refreshProfile,
         clearError,
       }}
