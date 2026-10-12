@@ -5,6 +5,7 @@ from backend.app.repositories.context_repository import ContextRepository
 from backend.app.repositories.conversation_repository import ConversationRepository
 from backend.app.repositories.message_repository import MessageRepository
 from backend.app.repositories.action_repository import ActionRepository
+from backend.app.repositories.session_repository import SessionRepository
 
 __all__ = [
     "BaseRepository",
@@ -14,4 +15,5 @@ __all__ = [
     "ConversationRepository",
     "MessageRepository",
     "ActionRepository",
+    "SessionRepository",
 ]

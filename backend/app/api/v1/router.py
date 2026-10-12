@@ -1,6 +1,9 @@
 from fastapi import APIRouter
-from backend.app.api.v1.routes import health
+from backend.app.api.v1.routes import health, auth, merchant
 
 api_router = APIRouter()
 
 api_router.include_router(health.router)
+api_router.include_router(auth.router)
+api_router.include_router(merchant.router)
+

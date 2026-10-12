@@ -335,7 +335,99 @@ In compliance with the mandatory Checkpoint Protocol:
   - Test database `magicpin_ai_agent_test` automatically migrated and downgraded to base after test completion.
 
 ### 11.3 Next Phase
-- **Phase 3: Authentication and Merchant Profiles** (`feature/auth-and-profiles`).
+- **Phase 3: Authentication and Merchant Profiles** (`feature/auth-security`).
+
+---
+
+## 12. Phase 3 Completion & Verification Report
+
+**Branch**: `feature/auth-security`  
+**Status**: **PASSED (Quality Gate Satisfied)**  
+**Date**: October 12, 2026  
+
+### 12.1 Completed Scope
+1. **Argon2id Password Security (`backend/app/core/security.py`)**:
+   - Minimum 19 MiB memory cost (`19456 KiB`), 2 iterations, 1 parallelism thread, 128-bit salt using `argon2-cffi`.
+   - Never logs or stores plaintext passwords.
+   - Generic constant-time rejection on incorrect email or password.
+2. **Opaque Hashed Sessions (`backend/app/repositories/session_repository.py`)**:
+   - 32-byte cryptographically secure random session tokens (`secrets.token_urlsafe(32)`).
+   - Stored in `user_sessions` exclusively as raw SHA-256 hashes (`token_hash`) to protect against database dump leaks.
+   - Session lifetime configured with safe default (7 days).
+   - Atomic session rotation: rotates token and revokes old session in DB during `/v1/auth/refresh`.
+   - Explicit revocation on logout (`revoked_at = func.now()`).
+3. **Session-Bound CSRF Defense**:
+   - CSRF token generated via HMAC-SHA256 of session ID and user ID using dedicated server-side secret (`CSRF_SECRET`).
+   - Never exposes or derives CSRF token from raw session cookie.
+   - Validates `X-CSRF-Token` header on state-changing methods (`POST`, `PATCH`, `DELETE`).
+   - Cross-session CSRF token reuse rejected with HTTP 403 Forbidden.
+4. **Login Brute-Force Rate Limiting**:
+   - Sliding-window in-memory rate limiter tracking failed attempts per IP and normalized email.
+   - Rejects excess failed login attempts with HTTP 429 Too Many Requests (`code="RATE_LIMIT_EXCEEDED"`).
+5. **Canonical Authentication Endpoints (`backend/app/api/v1/routes/auth.py`)**:
+   - `POST /v1/auth/register`: Atomically creates user + merchant profile, sets `HttpOnly` cookie, returns `AuthResponse` with `csrf_token`. Rejects duplicate emails with HTTP 409.
+   - `POST /v1/auth/login`: Verifies credentials, rotates session, sets `mp_session` cookie, returns `AuthResponse`.
+   - `POST /v1/auth/logout`: Revokes session in DB, clears cookie with `Max-Age=0`.
+   - `GET /v1/auth/me`: Resolves authenticated user and linked merchant profile.
+   - `POST /v1/auth/refresh`: Rotates session atomically, revokes old token, issues fresh CSRF token and cookie.
+   - `DELETE /v1/auth/account`: Requires password confirmation, revokes all user sessions, cascades deletion of user and workspace data.
+6. **Merchant Profile Management (`backend/app/api/v1/routes/merchant.py`)**:
+   - `GET /v1/merchant/profile`: Retrieves profile strictly scoped to authenticated user's session.
+   - `PATCH /v1/merchant/profile`: Updates profile fields (`business_name`, `category`, `location`, `description`, `timezone`), protected by CSRF verification and session derivation. Client-supplied `merchant_id` injection is rejected/ignored.
+7. **OpenAPI Error Consistency (`backend/app/main.py`)**:
+   - Added uniform exception handlers ensuring all HTTP exceptions and validation errors match `{ "error": { "code": "...", "message": "..." } }`.
+
+### 12.2 Verification Results
+- **Full Backend Test Suite**:
+  - Command: `.venv/bin/pytest backend/tests -v`
+  - Output:
+    ```
+    backend/tests/api/test_auth.py::test_register_success PASSED             [  3%]
+    backend/tests/api/test_auth.py::test_register_duplicate_email_rejection PASSED [  6%]
+    backend/tests/api/test_auth.py::test_register_weak_password_validation PASSED [  9%]
+    backend/tests/api/test_auth.py::test_login_flow_and_generic_errors PASSED [ 12%]
+    backend/tests/api/test_auth.py::test_login_rate_limiting PASSED          [ 15%]
+    backend/tests/api/test_auth.py::test_get_me_endpoint PASSED              [ 18%]
+    backend/tests/api/test_auth.py::test_logout_and_session_revocation PASSED [ 21%]
+    backend/tests/api/test_auth.py::test_session_rotation_on_refresh PASSED  [ 25%]
+    backend/tests/api/test_auth.py::test_account_deletion_flow PASSED        [ 28%]
+    backend/tests/api/test_health.py::test_root_endpoint PASSED              [ 31%]
+    backend/tests/api/test_health.py::test_healthz_liveness_endpoint PASSED  [ 34%]
+    backend/tests/api/test_health.py::test_readyz_readiness_endpoint_success PASSED [ 37%]
+    backend/tests/api/test_health.py::test_readyz_readiness_endpoint_db_failure PASSED [ 40%]
+    backend/tests/api/test_merchant_profile.py::test_merchant_profile_crud_and_csrf PASSED [ 43%]
+    backend/tests/api/test_merchant_profile.py::test_merchant_profile_unauthenticated PASSED [ 46%]
+    backend/tests/integration/test_migrations.py::test_alembic_upgrade_downgrade_cycle PASSED [ 50%]
+    backend/tests/integration/test_repositories.py::test_user_repository_crud_and_normalization PASSED [ 53%]
+    backend/tests/integration/test_repositories.py::test_merchant_repository_crud PASSED [ 56%]
+    backend/tests/integration/test_repositories.py::test_context_repository_crud_and_optimistic_concurrency PASSED [ 59%]
+    backend/tests/integration/test_repositories.py::test_conversation_repository_and_deterministic_order PASSED [ 62%]
+    backend/tests/integration/test_repositories.py::test_message_repository_and_history_window PASSED [ 65%]
+    backend/tests/integration/test_repositories.py::test_action_repository_state_transitions PASSED [ 68%]
+    backend/tests/integration/test_repositories.py::test_merchant_isolation PASSED [ 71%]
+    backend/tests/security/test_security_isolation.py::test_cross_merchant_session_isolation PASSED [ 75%]
+    backend/tests/security/test_security_isolation.py::test_csrf_token_cross_session_binding PASSED [ 78%]
+    backend/tests/security/test_security_isolation.py::test_session_expiration_and_revocation_enforcement PASSED [ 81%]
+    backend/tests/unit/test_config.py::test_default_settings PASSED          [ 84%]
+    backend/tests/unit/test_config.py::test_cors_origins_includes_frontend PASSED [ 87%]
+    backend/tests/unit/test_security.py::test_argon2id_hashing PASSED        [ 90%]
+    backend/tests/unit/test_security.py::test_opaque_session_tokens PASSED   [ 93%]
+    backend/tests/unit/test_security.py::test_session_bound_csrf_tokens PASSED [ 96%]
+    backend/tests/unit/test_security.py::test_login_rate_limiter PASSED      [100%]
+    ============================== 32 passed in 1.37s ==============================
+    ```
+- **Security & Tenant Isolation Verification**:
+  - `test_cross_merchant_session_isolation`: Verified that Merchant A cannot access or mutate Merchant B's profile; hostile payload injection of `merchant_id` is ignored.
+  - `test_csrf_token_cross_session_binding`: Verified that CSRF tokens from Session A cannot authorize actions on Session B (returns 403 `CSRF_TOKEN_INVALID`).
+  - `test_session_expiration_and_revocation_enforcement`: Verified that expired and revoked sessions are rejected with HTTP 401.
+  - `test_session_rotation_on_refresh`: Verified atomic rotation; old session token is immediately revoked in DB and rejected on reuse.
+- **Frontend Build Verification**:
+  - Command: `npm --prefix frontend run build` (`tsc && vite build`)
+  - Result: **Passed cleanly in 1.10s** (zero TypeScript or bundle errors).
+
+### 12.3 Next Phase
+- **Phase 4: Merchant Context and Conversations** (`feature/context-conversations`).
+
 
 
 

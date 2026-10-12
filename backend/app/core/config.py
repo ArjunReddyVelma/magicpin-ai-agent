@@ -33,10 +33,13 @@ class Settings(BaseSettings):
     FRONTEND_ORIGIN: str = "http://localhost:5173"
 
     # Sessions & Cookies
-    SESSION_TTL_MINUTES: int = 1440
+    SESSION_TTL_MINUTES: int = 10080  # 7 days
+    CSRF_SECRET: str = "insecure-development-csrf-secret-change-in-production"
     COOKIE_SECURE: bool = False
     COOKIE_SAMESITE: str = "lax"
     COOKIE_NAME: str = "mp_session"
+    RATE_LIMIT_LOGIN_MAX_ATTEMPTS: int = 5
+    RATE_LIMIT_LOGIN_WINDOW_SECONDS: int = 900
 
     # Observability
     LOG_LEVEL: str = "INFO"

@@ -2,10 +2,14 @@ import uuid
 import pytest
 from alembic.config import Config
 from alembic import command
+from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker, Session
 
+from backend.app.main import app
 from backend.app.core.config import settings
+from backend.app.core.dependencies import get_db
+from backend.app.core.security import hash_password
 from backend.app.models import (
     User,
     MerchantProfile,
@@ -38,7 +42,7 @@ def setup_test_database():
 @pytest.fixture
 def db_session() -> Session:
     """
-    Provides a transactional database session rolled back after each test.
+    Provides a transactional database session rolled back after each test using savepoints.
     """
     connection = test_engine.connect()
     transaction = connection.begin()
@@ -53,11 +57,25 @@ def db_session() -> Session:
 
 
 @pytest.fixture
+def client(db_session: Session) -> TestClient:
+    """
+    FastAPI TestClient with get_db overridden to use the transactional test session.
+    """
+    def override_get_db():
+        yield db_session
+
+    app.dependency_overrides[get_db] = override_get_db
+    with TestClient(app) as test_client:
+        yield test_client
+    app.dependency_overrides.clear()
+
+
+@pytest.fixture
 def test_user(db_session: Session) -> User:
     user = User(
         full_name="Test Merchant Owner",
         email=f"owner_{uuid.uuid4().hex[:8]}@example.com",
-        password_hash="argon2id_dummy_hash_for_tests",
+        password_hash=hash_password("ValidPassword123!"),
         is_active=True,
     )
     db_session.add(user)
@@ -84,7 +102,7 @@ def second_merchant(db_session: Session) -> MerchantProfile:
     user = User(
         full_name="Second Merchant Owner",
         email=f"second_{uuid.uuid4().hex[:8]}@example.com",
-        password_hash="argon2id_dummy_hash_for_tests",
+        password_hash=hash_password("ValidPassword123!"),
         is_active=True,
     )
     db_session.add(user)
