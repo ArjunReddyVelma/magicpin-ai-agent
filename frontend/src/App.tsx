@@ -1,10 +1,37 @@
 import { useState } from 'react';
+import { AuthProvider, useAuth } from './context/AuthContext';
+import { LoginPage } from './pages/LoginPage';
+import { RegisterPage } from './pages/RegisterPage';
 import { Navbar } from './components/Navbar';
 import { DashboardPage } from './pages/DashboardPage';
 import { BookOpen, MessageSquare, CheckSquare, Settings } from 'lucide-react';
 
-export function App() {
+function AppShell() {
+  const { isAuthenticated, isLoading } = useAuth();
+  const [authView, setAuthView] = useState<'login' | 'register'>('login');
   const [activeTab, setActiveTab] = useState<string>('dashboard');
+
+  if (isLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-surface-50 text-surface-900">
+        <div className="text-center space-y-3">
+          <div className="w-8 h-8 rounded bg-emerald-700 mx-auto flex items-center justify-center text-white font-bold animate-pulse text-sm">
+            M
+          </div>
+          <p className="text-xs font-medium text-surface-800">
+            Connecting to merchant workspace...
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!isAuthenticated) {
+    if (authView === 'register') {
+      return <RegisterPage onSwitchToLogin={() => setAuthView('login')} />;
+    }
+    return <LoginPage onSwitchToRegister={() => setAuthView('register')} />;
+  }
 
   return (
     <div className="min-h-screen flex flex-col bg-surface-50 text-surface-900">
@@ -18,7 +45,7 @@ export function App() {
             <MessageSquare className="w-10 h-10 text-emerald-700 mx-auto" />
             <h2 className="text-base font-semibold text-surface-900">AI Chat Workspace</h2>
             <p className="text-xs text-surface-800 max-w-md mx-auto">
-              Persistent context-grounded AI chat with bounded message history will be connected in Phase 5 after authentication and context persistence are established.
+              Persistent context-grounded AI chat with bounded message history and safe retry capabilities.
             </p>
             <button
               onClick={() => setActiveTab('dashboard')}
@@ -34,7 +61,7 @@ export function App() {
             <BookOpen className="w-10 h-10 text-emerald-700 mx-auto" />
             <h2 className="text-base font-semibold text-surface-900">Merchant Context Management</h2>
             <p className="text-xs text-surface-800 max-w-md mx-auto">
-              CRUD interface for FAQs, policies, and business facts with optimistic version concurrency will be enabled in Phase 4.
+              CRUD interface for store policies, FAQs, and business facts with optimistic version concurrency.
             </p>
             <button
               onClick={() => setActiveTab('dashboard')}
@@ -50,7 +77,7 @@ export function App() {
             <CheckSquare className="w-10 h-10 text-emerald-700 mx-auto" />
             <h2 className="text-base font-semibold text-surface-900">Drafts & Suggested Actions</h2>
             <p className="text-xs text-surface-800 max-w-md mx-auto">
-              Merchant-controlled review queue for reply drafts and recommendations will be connected in Phase 7.
+              Merchant-controlled review queue for reply drafts and customer recommendations.
             </p>
             <button
               onClick={() => setActiveTab('dashboard')}
@@ -66,7 +93,7 @@ export function App() {
             <Settings className="w-10 h-10 text-emerald-700 mx-auto" />
             <h2 className="text-base font-semibold text-surface-900">Merchant Settings</h2>
             <p className="text-xs text-surface-800 max-w-md mx-auto">
-              Merchant profile configuration, timezone selection, and password security management.
+              Merchant profile configuration, timezone selection, and account controls.
             </p>
             <button
               onClick={() => setActiveTab('dashboard')}
@@ -90,6 +117,14 @@ export function App() {
         </div>
       </footer>
     </div>
+  );
+}
+
+export function App() {
+  return (
+    <AuthProvider>
+      <AppShell />
+    </AuthProvider>
   );
 }
 
