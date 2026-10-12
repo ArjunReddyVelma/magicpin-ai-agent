@@ -12,6 +12,8 @@ import {
   HealthzResponse,
   ReadyzResponse,
   ApiErrorResponse,
+  SuggestedAction,
+  ActionListResponse,
 } from '../types/api';
 
 export class ApiClientError extends Error {
@@ -316,6 +318,37 @@ class ApiClient {
       method: 'POST',
       headers,
       body: JSON.stringify(payload),
+    });
+  }
+
+  // Suggested Actions
+  public async listActions(params?: {
+    status?: string;
+    page?: number;
+    page_size?: number;
+  }): Promise<ActionListResponse> {
+    const searchParams = new URLSearchParams();
+    if (params?.status) searchParams.set('status', params.status);
+    if (params?.page) searchParams.set('page', String(params.page));
+    if (params?.page_size) searchParams.set('page_size', String(params.page_size));
+
+    const qs = searchParams.toString();
+    return this.request<ActionListResponse>(`/actions${qs ? `?${qs}` : ''}`);
+  }
+
+  public async getAction(id: string): Promise<SuggestedAction> {
+    return this.request<SuggestedAction>(`/actions/${id}`);
+  }
+
+  public async approveAction(id: string): Promise<SuggestedAction> {
+    return this.request<SuggestedAction>(`/actions/${id}/approve`, {
+      method: 'POST',
+    });
+  }
+
+  public async dismissAction(id: string): Promise<SuggestedAction> {
+    return this.request<SuggestedAction>(`/actions/${id}/dismiss`, {
+      method: 'POST',
     });
   }
 }

@@ -635,19 +635,43 @@ In compliance with the mandatory Checkpoint Protocol:
        - Server validation error handling (e.g., HTTP 401 `INVALID_PASSWORD`) displaying exact feedback without closing modal or navigating away.
        - Client authentication state cleared only after backend confirms successful deletion, transitioning cleanly to login screen.
 
+6. **Checkpoint 6: Drafts & Suggested Actions Review Queue**:
+   - Exposed minimal canonical HTTP endpoints backed by `ActionRepository`:
+     - `GET /v1/actions`: list with `status` filter (`pending`, `approved`, `dismissed`) and pagination (`page`, `page_size`).
+     - `GET /v1/actions/{action_id}`: get single action scoped to authenticated merchant.
+     - `POST /v1/actions/{action_id}/approve`: atomic transition to `approved` with CSRF protection, returning 409 `INVALID_ACTION_STATE` on repeated reviews.
+     - `POST /v1/actions/{action_id}/dismiss`: atomic transition to `dismissed` with CSRF protection.
+     - Human-in-the-loop guarantee: strictly records merchant decisions in the database without triggering external messaging, SMS, WhatsApp, or financial calls.
+   - Implemented `ActionsPage` (`frontend/src/pages/ActionsPage.tsx`) and integrated into `App.tsx`:
+     - Filter tabs for `Pending`, `Approved`, `Dismissed`, and `All`.
+     - Action cards with canonical type badges (`reply_draft`, `recommendation`, `summary`, `follow_up`), titles, formatted descriptions, conversation link references, and reviewed timestamps.
+     - Expandable JSON payload inspector for metadata inspection.
+     - In-flight duplicate submission prevention on approve and dismiss actions.
+     - Clear human-in-the-loop safeguard notice communicating that approvals record decisions rather than executing external actions.
+     - Automatic queue refresh after successful transitions.
+     - Useful loading, empty, and partial error recovery states.
+
 ### 15.2 Verification Results
 - **Frontend Automated Test Suite**:
   - Command: `npm --prefix frontend test` (`node --test test/*.test.js`)
-  - Result: **30 passed in 83ms** (100% green across auth/api, dashboard/profile, context CRUD, workspace chat, and settings/account suites).
+  - Result: **37 passed in 103ms** (100% green across auth/api, dashboard/profile, context CRUD, workspace chat, settings/account, and actions review suites).
 - **Frontend Production Build**:
   - Command: `npm --prefix frontend run build` (`tsc && vite build`)
-  - Result: **Passed cleanly in 1.19s** (0 TypeScript errors, 265 kB bundle).
-- **Backend Regression Suite**:
+  - Result: **Passed cleanly in 1.15s** (0 TypeScript errors, 278 kB bundle).
+- **Backend Test Suite**:
   - Command: `.venv/bin/pytest backend/tests -v`
-  - Result: **62 passed in 3.66s** (100% green across unit, API, integration, and security suites).
+  - Result: **68 passed in 3.79s** (100% green across unit, API, integration, and security suites, including 6 new tests in `test_actions.py`).
+- **OpenAPI Schema Contract Alignment**:
+  - Validated via `app.openapi()`: 20 canonical endpoints matching REST architecture.
 
-### 15.3 Next Checkpoint
-- **Checkpoint 6: Drafts & Suggested Actions Review Queue**.
+### 15.3 Status of Phase 6: Frontend Core Screens
+- **All Core Screens and Workflows Implemented**:
+  1. Routing, Authentication, API Client Integration, and Session Restoration (Checkpoint 1).
+  2. Live Dashboard with real API data and Merchant Profile Card (Checkpoint 2).
+  3. Business Context Management with Optimistic Concurrency and Conflict Resolution (Checkpoint 3).
+  4. AI Chat Workspace with persistent conversation management, bounded history, and safe retries (Checkpoint 4).
+  5. Settings & Safe Account Deletion with password verification (Checkpoint 5).
+  6. Suggested Actions Review Queue with Human-in-the-Loop decision governance (Checkpoint 6).
 
 
 

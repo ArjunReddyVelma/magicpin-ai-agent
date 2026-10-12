@@ -133,3 +133,28 @@ export interface ChatResponse {
   context_used: ContextUsedItem[];
 }
 
+export type ActionType = 'reply_draft' | 'summary' | 'recommendation' | 'follow_up';
+export type ActionStatus = 'pending' | 'approved' | 'dismissed';
+
+export interface SuggestedAction {
+  id: string;
+  merchant_id: string;
+  conversation_id: string | null;
+  action_type: ActionType;
+  title: string;
+  description: string;
+  payload: Record<string, unknown> | null;
+  status: ActionStatus;
+  created_by: string;
+  reviewed_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ActionListResponse {
+  items: SuggestedAction[];
+  total: number;
+  page: number;
+  page_size: number;
+}
+

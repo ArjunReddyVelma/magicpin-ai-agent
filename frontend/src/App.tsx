@@ -6,8 +6,8 @@ import { Navbar } from './components/Navbar';
 import { DashboardPage } from './pages/DashboardPage';
 import { ContextPage } from './pages/ContextPage';
 import { WorkspacePage } from './pages/WorkspacePage';
+import { ActionsPage } from './pages/ActionsPage';
 import { SettingsPage } from './pages/SettingsPage';
-import { CheckSquare } from 'lucide-react';
 
 function AppShell() {
   const { isAuthenticated, isLoading } = useAuth();
@@ -55,21 +55,7 @@ function AppShell() {
 
         {activeTab === 'context' && <ContextPage />}
 
-        {activeTab === 'actions' && (
-          <div className="bg-white border border-surface-200 rounded p-8 text-center space-y-3">
-            <CheckSquare className="w-10 h-10 text-emerald-700 mx-auto" />
-            <h2 className="text-base font-semibold text-surface-900">Drafts & Suggested Actions</h2>
-            <p className="text-xs text-surface-800 max-w-md mx-auto">
-              Merchant-controlled review queue for reply drafts and customer recommendations.
-            </p>
-            <button
-              onClick={() => setActiveTab('dashboard')}
-              className="text-xs font-medium text-emerald-800 underline"
-            >
-              Return to Dashboard
-            </button>
-          </div>
-        )}
+        {activeTab === 'actions' && <ActionsPage />}
 
         {activeTab === 'settings' && <SettingsPage />}
       </main>
