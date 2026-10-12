@@ -575,8 +575,47 @@ In compliance with the mandatory Checkpoint Protocol:
 - **OpenAPI Schema Contract Alignment**:
   - Validated via `app.openapi()`: 16 canonical endpoints matching `Magicpin_AI_Agent_OpenAPI_v1.yaml`.
 
-### 14.3 Next Phase
-- **Phase 6: Frontend Core Screens** (`feature/frontend`).
+### 14.3 Checkpoint Publication
+- Verified commit: `12bb0896984e58dbd5084af93fe1f3c36f929284`
+- Published to: `origin/feature/ai-chat`
+
+---
+
+## 15. Phase 6: Frontend Core Screens (In Progress)
+
+**Branch**: `feature/frontend-core`  
+**Current Checkpoint**: **Checkpoint 2: Dashboard & Merchant Profile (Passed)**  
+**Date**: October 12, 2026  
+
+### 15.1 Completed Scope
+1. **Checkpoint 1: Routing, Authentication & API Client**:
+   - Centralized typed API client (`frontend/src/api/client.ts`) enforcing `credentials: 'include'` and injecting `X-CSRF-Token` on state-changing requests.
+   - `AuthContext` (`frontend/src/context/AuthContext.tsx`) managing session restoration (`GET /v1/auth/me`), login, register, and logout.
+   - Restrained SaaS authentication pages: `LoginPage` and `RegisterPage` with form validation, error alerts, and loading states.
+   - `Navbar` displaying merchant business name, category, user email, session security indicator, and sign-out button.
+   - Session expiration / 401 interceptor cleanly transitioning state to unauthenticated view.
+2. **Checkpoint 2: Dashboard & Merchant Profile**:
+   - Connected `DashboardPage` to real backend API endpoints (`/v1/context`, `/v1/conversations`, `/v1/merchant/profile`, `/v1/healthz`, `/v1/readyz`).
+   - Metrics cards display live context counts (total + active) and conversation counts (total + active).
+   - Independent error handling and loading states for each section: context errors or conversation errors are isolated and do not crash or degrade other components.
+   - Honest empty states for zero context items and zero conversations with direct navigation buttons.
+   - `MerchantProfileCard`: Viewing profile attributes (business name, category, location, description, timezone, registration date) and inline editing against `PATCH /v1/merchant/profile` with input validation, duplicate submission protection, and server error handling.
+   - Preserved design constraints: no purple gradients, pill buttons, fake stats, fake reviews, or unnecessary animations.
+
+### 15.2 Verification Results
+- **Frontend Automated Test Suite**:
+  - Command: `npm --prefix frontend test` (`node --test test/*.test.js`)
+  - Result: **9 passed in 74ms** (API client formatting, CSRF injection, 401 interceptor, error parsing, dashboard data loading, empty states, partial failure isolation, profile updating, and profile input validation).
+- **Frontend Production Build**:
+  - Command: `npm --prefix frontend run build` (`tsc && vite build`)
+  - Result: **Passed cleanly in 1.14s** (0 TypeScript errors, production assets bundled cleanly).
+- **Backend Regression Suite**:
+  - Command: `.venv/bin/pytest backend/tests -v`
+  - Result: **62 passed in 3.64s** (100% green across unit, API, integration, and security suites).
+
+### 15.3 Next Checkpoint
+- **Checkpoint 3: Business Context Management (CRUD)**.
+
 
 
 
