@@ -217,3 +217,173 @@ def test_chat_archived_conversation_rejected(chat_client):
     )
     assert chat_resp.status_code == 400
     assert chat_resp.json()["error"]["code"] == "CONVERSATION_ARCHIVED"
+
+
+def test_repeated_retry_failure_lifecycle(chat_client):
+    """
+    Proves full lifecycle: initial failure -> retry 1 fails (remains failed) -> retry 2 succeeds.
+    Verifies message is never marked complete before actual provider success.
+    """
+    client, mock_provider = chat_client
+
+    email = f"rep_{uuid.uuid4().hex[:8]}@example.com"
+    reg_resp = client.post(
+        "/v1/auth/register",
+        json={"email": email, "password": "Password123!", "full_name": "Rep Owner", "business_name": "Rep Shop"},
+    )
+    headers = {"X-CSRF-Token": reg_resp.json()["csrf_token"]}
+    conv_id = client.post("/v1/conversations", headers=headers, json={"title": "Rep Conv"}).json()["id"]
+
+    # 1. Initial attempt fails
+    mock_provider.set_should_raise(LLMTimeoutError("First timeout"))
+    resp1 = client.post(f"/v1/conversations/{conv_id}/messages", headers=headers, json={"content": "Question"})
+    assert resp1.status_code == 502
+    failed_id = resp1.json()["error"]["details"]["failed_message_id"]
+
+    # Verify status in DB is failed
+    msgs1 = client.get(f"/v1/conversations/{conv_id}/messages").json()["items"]
+    assert len(msgs1) == 1
+    assert msgs1[0]["id"] == failed_id
+    assert msgs1[0]["status"] == "failed"
+
+    # 2. Retry 1 fails again
+    mock_provider.set_should_raise(LLMTimeoutError("Second timeout"))
+    resp2 = client.post(
+        f"/v1/conversations/{conv_id}/messages",
+        headers=headers,
+        json={"content": "Question retry", "retry_message_id": failed_id},
+    )
+    assert resp2.status_code == 502
+    assert resp2.json()["error"]["code"] == "LLM_PROVIDER_ERROR"
+    assert resp2.json()["error"]["details"]["failed_message_id"] == failed_id
+
+    # Verify status in DB is STILL failed (never marked complete prematurely)
+    msgs2 = client.get(f"/v1/conversations/{conv_id}/messages").json()["items"]
+    assert len(msgs2) == 1
+    assert msgs2[0]["id"] == failed_id
+    assert msgs2[0]["status"] == "failed"
+
+    # 3. Retry 2 succeeds
+    mock_provider.set_should_raise(None)
+    mock_provider.default_response = "Success after retries"
+    resp3 = client.post(
+        f"/v1/conversations/{conv_id}/messages",
+        headers=headers,
+        json={"content": "Question retry", "retry_message_id": failed_id},
+    )
+    assert resp3.status_code == 200
+    assert resp3.json()["user_message"]["id"] == failed_id
+    assert resp3.json()["user_message"]["status"] == "complete"
+    assert resp3.json()["assistant_message"]["status"] == "complete"
+
+    # Final DB check: exactly 2 messages, both complete
+    msgs3 = client.get(f"/v1/conversations/{conv_id}/messages").json()["items"]
+    assert len(msgs3) == 2
+    assert msgs3[0]["status"] == "complete"
+    assert msgs3[1]["status"] == "complete"
+
+
+def test_invalid_retry_targets(chat_client):
+    """
+    Proves invalid retry attempts are strictly rejected:
+    - Non-existent message -> 404
+    - Already completed message -> 409
+    - Message from another conversation -> 404
+    """
+    client, mock_provider = chat_client
+
+    email = f"target_{uuid.uuid4().hex[:8]}@example.com"
+    reg_resp = client.post(
+        "/v1/auth/register",
+        json={"email": email, "password": "Password123!", "full_name": "Target Owner", "business_name": "Target Shop"},
+    )
+    headers = {"X-CSRF-Token": reg_resp.json()["csrf_token"]}
+    conv_a = client.post("/v1/conversations", headers=headers, json={"title": "Conv A"}).json()["id"]
+    conv_b = client.post("/v1/conversations", headers=headers, json={"title": "Conv B"}).json()["id"]
+
+    # Non-existent ID
+    fake_id = str(uuid.uuid4())
+    bad_resp1 = client.post(
+        f"/v1/conversations/{conv_a}/messages",
+        headers=headers,
+        json={"content": "Retry non-existent", "retry_message_id": fake_id},
+    )
+    assert bad_resp1.status_code == 404
+    assert bad_resp1.json()["error"]["code"] == "RETRY_MESSAGE_NOT_FOUND"
+
+    # Completed message in conv_a
+    ok_resp = client.post(f"/v1/conversations/{conv_a}/messages", headers=headers, json={"content": "Normal msg"})
+    assert ok_resp.status_code == 200
+    comp_user_id = ok_resp.json()["user_message"]["id"]
+
+    # Retrying an already completed message -> 409
+    bad_resp2 = client.post(
+        f"/v1/conversations/{conv_a}/messages",
+        headers=headers,
+        json={"content": "Retry completed", "retry_message_id": comp_user_id},
+    )
+    assert bad_resp2.status_code == 409
+    assert bad_resp2.json()["error"]["code"] == "MESSAGE_ALREADY_COMPLETED"
+
+    # Create failed message in conv_a
+    mock_provider.set_should_raise(LLMTimeoutError("Fail A"))
+    fail_resp = client.post(f"/v1/conversations/{conv_a}/messages", headers=headers, json={"content": "Failed in A"})
+    assert fail_resp.status_code == 502
+    failed_a_id = fail_resp.json()["error"]["details"]["failed_message_id"]
+
+    # Attempting to retry conv_a's failed message inside conv_b -> 404
+    mock_provider.set_should_raise(None)
+    cross_retry_resp = client.post(
+        f"/v1/conversations/{conv_b}/messages",
+        headers=headers,
+        json={"content": "Cross retry", "retry_message_id": failed_a_id},
+    )
+    assert cross_retry_resp.status_code == 404
+    assert cross_retry_resp.json()["error"]["code"] == "RETRY_MESSAGE_NOT_FOUND"
+
+
+def test_idempotency_key_mismatch_and_cross_conversation_reuse(chat_client):
+    """
+    Proves:
+    1. Header and body idempotency key mismatch -> 400 IDEMPOTENCY_KEY_MISMATCH
+    2. Reusing an idempotency key across different conversations -> 409 IDEMPOTENCY_KEY_REUSED
+    """
+    client, mock_provider = chat_client
+
+    email = f"mismatch_{uuid.uuid4().hex[:8]}@example.com"
+    reg_resp = client.post(
+        "/v1/auth/register",
+        json={"email": email, "password": "Password123!", "full_name": "Key Owner", "business_name": "Key Shop"},
+    )
+    headers = {"X-CSRF-Token": reg_resp.json()["csrf_token"]}
+    conv_1 = client.post("/v1/conversations", headers=headers, json={"title": "Conv 1"}).json()["id"]
+    conv_2 = client.post("/v1/conversations", headers=headers, json={"title": "Conv 2"}).json()["id"]
+
+    # 1. Header vs Body mismatch
+    headers_with_mismatch = {**headers, "Idempotency-Key": "header-val-123"}
+    mismatch_resp = client.post(
+        f"/v1/conversations/{conv_1}/messages",
+        headers=headers_with_mismatch,
+        json={"content": "Mismatch query", "idempotency_key": "body-val-456"},
+    )
+    assert mismatch_resp.status_code == 400
+    assert mismatch_resp.json()["error"]["code"] == "IDEMPOTENCY_KEY_MISMATCH"
+
+    # 2. Valid send in conv_1 with shared key
+    shared_key = f"scoped_{uuid.uuid4().hex}"
+    ok_resp = client.post(
+        f"/v1/conversations/{conv_1}/messages",
+        headers=headers,
+        json={"content": "Valid in conv 1", "idempotency_key": shared_key},
+    )
+    assert ok_resp.status_code == 200
+
+    # 3. Attempt to use same shared_key in conv_2 -> 409
+    reused_resp = client.post(
+        f"/v1/conversations/{conv_2}/messages",
+        headers=headers,
+        json={"content": "Attempt in conv 2", "idempotency_key": shared_key},
+    )
+    assert reused_resp.status_code == 409
+    assert reused_resp.json()["error"]["code"] == "IDEMPOTENCY_KEY_REUSED"
+

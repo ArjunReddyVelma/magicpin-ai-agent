@@ -11,7 +11,9 @@ from backend.app.ai.context_retriever import ContextRetriever
 from backend.app.ai.response_validator import ResponseValidator
 from backend.app.core.logging import logger
 from backend.app.models.merchant_profile import MerchantProfile
+from backend.app.models.conversation import Conversation
 from backend.app.models.message import Message
+
 from backend.app.repositories.conversation_repository import ConversationRepository
 from backend.app.repositories.message_repository import MessageRepository
 from backend.app.schemas.message import (
@@ -53,9 +55,16 @@ class ChatService:
         idempotency_key: Optional[str] = None,
         retry_message_id: Optional[uuid.UUID] = None,
     ) -> ChatResponse:
-        # 1. Authorize conversation
-        conv_repo = ConversationRepository(db)
-        conv = conv_repo.get_by_id(merchant_id=merchant.id, conversation_id=conversation_id)
+        # 1. Authorize conversation and acquire row-level lock to serialize concurrent turns
+        stmt = (
+            select(Conversation)
+            .where(
+                Conversation.id == conversation_id,
+                Conversation.merchant_id == merchant.id,
+            )
+            .with_for_update()
+        )
+        conv = db.scalars(stmt).first()
         if not conv:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
@@ -67,22 +76,56 @@ class ChatService:
                 detail={"error": {"code": "CONVERSATION_ARCHIVED", "message": "Cannot send messages to an archived conversation"}},
             )
 
+        conv_repo = ConversationRepository(db)
         msg_repo = MessageRepository(db)
         user_msg: Optional[Message] = None
 
-        # 2. Check retry path
+        # 2. Check retry path with strict ownership, conversation, and failure status validation
         if retry_message_id:
             candidate = msg_repo.get_by_id(conversation_id=conversation_id, message_id=retry_message_id)
-            if candidate and candidate.role == "user" and candidate.status == "failed":
-                user_msg = candidate
-                if content and content.strip():
-                    user_msg.content = content.strip()
-                user_msg.status = "complete"
-                db.commit()
-                db.refresh(user_msg)
+            if not candidate:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail={"error": {"code": "RETRY_MESSAGE_NOT_FOUND", "message": "Failed message to retry was not found in this conversation"}},
+                )
+            if candidate.role != "user":
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail={"error": {"code": "INVALID_RETRY_TARGET", "message": "Only user messages can be retried"}},
+                )
+            if candidate.status == "complete":
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail={"error": {"code": "MESSAGE_ALREADY_COMPLETED", "message": "Message turn has already completed successfully"}},
+                )
+            user_msg = candidate
+            if content and content.strip():
+                user_msg.content = content.strip()
+            # Note: user_msg.status remains 'failed' during retry attempt;
+            # it is only transitioned to 'complete' once assistant response succeeds.
+            db.commit()
+            db.refresh(user_msg)
 
         # 3. Check idempotency key if user_msg is not already resolved
         if not user_msg and idempotency_key:
+            # Prevent reusing idempotency key across different conversations
+            cross_stmt = select(Message).where(
+                Message.conversation_id != conversation_id,
+                Message.role == "user",
+                Message.context_metadata.op("->>")("idempotency_key") == idempotency_key,
+            )
+            if db.scalars(cross_stmt).first():
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail={
+                        "error": {
+                            "code": "IDEMPOTENCY_KEY_REUSED",
+                            "message": "Idempotency key has already been used in another conversation",
+                        }
+                    },
+                )
+
+            # Query existing message with this idempotency key in current conversation
             stmt = select(Message).where(
                 Message.conversation_id == conversation_id,
                 Message.role == "user",
@@ -92,7 +135,9 @@ class ChatService:
             if existing_user_msg:
                 if existing_user_msg.status == "failed":
                     user_msg = existing_user_msg
-                    user_msg.status = "complete"
+                    if content and content.strip():
+                        user_msg.content = content.strip()
+                    # Remains 'failed' until generation succeeds
                     db.commit()
                     db.refresh(user_msg)
                 else:
@@ -129,14 +174,15 @@ class ChatService:
                         )
                     user_msg = existing_user_msg
 
-        # 4. If no existing message, persist new user message
+        # 4. If no existing message, persist new user message initially as 'failed'
+        # to ensure it is never marked complete before its required operation has succeeded.
         if not user_msg:
             metadata = {"idempotency_key": idempotency_key} if idempotency_key else None
             user_msg = msg_repo.create(
                 conversation_id=conversation_id,
                 role="user",
                 content=content.strip(),
-                status="complete",
+                status="failed",
                 context_metadata=metadata,
             )
 
@@ -159,7 +205,7 @@ class ChatService:
                 messages=messages_payload,
             )
         except Exception as exc:
-            # Mark user message as failed and preserve in DB
+            # User message remains marked failed in DB
             user_msg.status = "failed"
             db.commit()
             db.refresh(user_msg)
@@ -169,7 +215,7 @@ class ChatService:
                 detail={
                     "error": {
                         "code": "LLM_PROVIDER_ERROR",
-                        "message": "The AI service is temporarily unavailable. Your message has been saved and can be retried.",
+                        "message": "The AI service is temporarily unavailable. Your message has been saved as failed and can be retried.",
                         "details": {
                             "failed_message_id": str(user_msg.id),
                             "retryable": True,
@@ -180,6 +226,10 @@ class ChatService:
 
         # 7. Validate output and persist assistant message
         validated_content, _ = self.response_validator.validate(response.content)
+
+        # Transition user message to 'complete' now that generation has actually succeeded!
+        user_msg.status = "complete"
+        db.add(user_msg)
 
         context_used_metadata = [
             {

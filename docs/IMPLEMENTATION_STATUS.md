@@ -547,9 +547,11 @@ In compliance with the mandatory Checkpoint Protocol:
    - `ResponseValidator` (`backend/app/ai/response_validator.py`) bounding response lengths and appending non-executable disclaimers if unauthorized external action claims are detected.
 2. **Chat Service & Endpoint (`POST /v1/conversations/{conversation_id}/messages`)**:
    - Implemented in `backend/app/services/chat_service.py` and `backend/app/api/v1/routes/conversations.py`.
-   - Persists submitted user message to PostgreSQL first (`status="complete"`).
-   - If AI generation fails: user message is updated to `status="failed"` in database (preventing silent turn loss) and returns HTTP 502 (`code="LLM_PROVIDER_ERROR"`) with retry details.
-   - Idempotency & Safe Retry: supports `Idempotency-Key` header and body field, avoiding duplicate turns. Supports `retry_message_id` to re-attempt failed user turns without duplicate records.
+   - Conversation row-level lock (`with_for_update()`) serializes concurrent turns within a conversation and eliminates race conditions.
+   - User message lifecycle strictly preserves state: message is initially saved as `status="failed"` (or preserved as `failed` during retries) and ONLY marked `status="complete"` after provider generation and response validation succeed.
+   - If AI generation fails: user message remains `status="failed"` in database (preventing silent turn loss) and returns HTTP 502 (`code="LLM_PROVIDER_ERROR"`) with retry details.
+   - Idempotency & Safe Retry: supports `Idempotency-Key` header and body field (rejecting mismatches with HTTP 400 `IDEMPOTENCY_KEY_MISMATCH`), and rejects cross-conversation reuse with HTTP 409 `IDEMPOTENCY_KEY_REUSED`.
+   - Validates `retry_message_id`: ensures target message exists in the conversation (404), is a user message (400), and has not already completed (409).
    - Persists assistant responses with model metadata, token usage, and accurate `context_metadata`.
    - Updates conversation `last_message_at` timestamp.
 3. **Fail-Safe Rate Limiter Hardening**:
@@ -562,15 +564,16 @@ In compliance with the mandatory Checkpoint Protocol:
 ### 14.2 Verification Results
 - **Full Backend Test Suite**:
   - Command: `.venv/bin/pytest backend/tests -v`
-  - Result: **56 passed in 2.75s** (100% green across unit, API, integration, and security suites).
+  - Result: **59 passed in 2.58s** (100% green across unit, API, integration, and security suites).
 - **Frontend Production Build**:
   - Command: `npm --prefix frontend run build` (`tsc && vite build`)
-  - Result: **Passed cleanly in 1.13s** (0 errors).
+  - Result: **Passed cleanly in 1.09s** (0 errors).
 - **OpenAPI Schema Contract Alignment**:
   - Validated via `app.openapi()`: 16 canonical endpoints matching `Magicpin_AI_Agent_OpenAPI_v1.yaml`.
 
 ### 14.3 Next Phase
 - **Phase 6: Frontend Core Screens** (`feature/frontend`).
+
 
 
 

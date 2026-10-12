@@ -196,8 +196,21 @@ def send_chat_message(
     _: None = Depends(verify_csrf),
     db: Session = Depends(get_db),
 ) -> ChatResponse:
+    if idempotency_header and req.idempotency_key:
+        if idempotency_header.strip() != req.idempotency_key.strip():
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail={
+                    "error": {
+                        "code": "IDEMPOTENCY_KEY_MISMATCH",
+                        "message": "Idempotency-Key header does not match idempotency_key in request body",
+                    }
+                },
+            )
     chat_service = ChatService()
     idempotency_key = req.idempotency_key or idempotency_header
+    if idempotency_key:
+        idempotency_key = idempotency_key.strip()
     return chat_service.send_message(
         merchant=merchant,
         conversation_id=conversation_id,
@@ -207,4 +220,5 @@ def send_chat_message(
         idempotency_key=idempotency_key,
         retry_message_id=req.retry_message_id,
     )
+
 
