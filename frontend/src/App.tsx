@@ -5,12 +5,14 @@ import { RegisterPage } from './pages/RegisterPage';
 import { Navbar } from './components/Navbar';
 import { DashboardPage } from './pages/DashboardPage';
 import { ContextPage } from './pages/ContextPage';
-import { MessageSquare, CheckSquare, Settings } from 'lucide-react';
+import { WorkspacePage } from './pages/WorkspacePage';
+import { CheckSquare, Settings } from 'lucide-react';
 
 function AppShell() {
   const { isAuthenticated, isLoading } = useAuth();
   const [authView, setAuthView] = useState<'login' | 'register'>('login');
   const [activeTab, setActiveTab] = useState<string>('dashboard');
+  const [selectedConvId, setSelectedConvId] = useState<string | null>(null);
 
   if (isLoading) {
     return (
@@ -34,28 +36,21 @@ function AppShell() {
     return <LoginPage onSwitchToRegister={() => setAuthView('register')} />;
   }
 
+  const handleNavigate = (tab: string, convId?: string) => {
+    if (convId) {
+      setSelectedConvId(convId);
+    }
+    setActiveTab(tab);
+  };
+
   return (
     <div className="min-h-screen flex flex-col bg-surface-50 text-surface-900">
       <Navbar activeTab={activeTab} onTabChange={setActiveTab} />
 
       <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6">
-        {activeTab === 'dashboard' && <DashboardPage onNavigate={setActiveTab} />}
+        {activeTab === 'dashboard' && <DashboardPage onNavigate={handleNavigate} />}
 
-        {activeTab === 'workspace' && (
-          <div className="bg-white border border-surface-200 rounded p-8 text-center space-y-3">
-            <MessageSquare className="w-10 h-10 text-emerald-700 mx-auto" />
-            <h2 className="text-base font-semibold text-surface-900">AI Chat Workspace</h2>
-            <p className="text-xs text-surface-800 max-w-md mx-auto">
-              Persistent context-grounded AI chat with bounded message history and safe retry capabilities.
-            </p>
-            <button
-              onClick={() => setActiveTab('dashboard')}
-              className="text-xs font-medium text-emerald-800 underline"
-            >
-              Return to Dashboard
-            </button>
-          </div>
-        )}
+        {activeTab === 'workspace' && <WorkspacePage initialConversationId={selectedConvId} />}
 
         {activeTab === 'context' && <ContextPage />}
 

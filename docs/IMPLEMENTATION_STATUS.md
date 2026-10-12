@@ -584,7 +584,7 @@ In compliance with the mandatory Checkpoint Protocol:
 ## 15. Phase 6: Frontend Core Screens (In Progress)
 
 **Branch**: `feature/frontend-core`  
-**Current Checkpoint**: **Checkpoint 3: Business Context Management (CRUD) (Passed)**  
+**Current Checkpoint**: **Checkpoint 4: AI Chat Workspace (Passed)**  
 **Date**: October 12, 2026  
 
 ### 15.1 Completed Scope
@@ -612,20 +612,30 @@ In compliance with the mandatory Checkpoint Protocol:
      - Quick inline active/inactive toggle with version tracking.
      - Destructive delete confirmation modal for `DELETE /v1/context/{id}` with clear warning and irreversible action indication.
      - Comprehensive loading, empty, and partial error recovery states with retry buttons.
+4. **Checkpoint 4: AI Chat Workspace**:
+   - Implemented `WorkspacePage` (`frontend/src/pages/WorkspacePage.tsx`) and integrated into `App.tsx` and `DashboardPage`:
+     - Conversation management: listing with status tabs (`all`, `active`, `archived`) and search query, creation (`POST /v1/conversations`), inline renaming (`PATCH /v1/conversations/{id}`), archiving / reactivating toggle, and deletion with confirmation modal (`DELETE /v1/conversations/{id}`).
+     - Deterministic message history (`GET /v1/conversations/{id}/messages`) with pagination support ("Load earlier messages").
+     - Accessible composer with length counter (up to 4000 chars), Enter/Shift+Enter shortcuts, sending spinner, duplicate submission prevention, and preservation of unsent draft text across errors.
+     - Honest assistant response display with accurate model names, token counts, and grounding context sources (`[type] title vX`) directly from `context_metadata.sources` without fabricated citations.
+     - Provider failure detection (HTTP 502 `LLM_PROVIDER_ERROR`) preserving failed message reference and surfacing clear error alerts.
+     - Safe retry affordance on failed turns transmitting `retry_message_id` and unique `idempotency_key` via both header and body, cleanly transitioning message from `failed` to `complete`.
+     - Strict archived conversation guardrails: composer is disabled and warning banner advises re-activation, aligning with backend HTTP 400 `CONVERSATION_ARCHIVED`.
+     - Clean session expiration (401) and CSRF error isolation.
 
 ### 15.2 Verification Results
 - **Frontend Automated Test Suite**:
   - Command: `npm --prefix frontend test` (`node --test test/*.test.js`)
-  - Result: **15 passed in 75ms** (API client, CSRF injection, 401 handling, dashboard metrics, empty states, failure isolation, profile editing, canonical context filtering, context creation, optimistic concurrency / version header, STALE_VERSION_CONFLICT handling, deletion, and context input validation).
+  - Result: **23 passed in 95ms** (100% green across auth/api, dashboard/profile, context CRUD, and workspace chat suites).
 - **Frontend Production Build**:
   - Command: `npm --prefix frontend run build` (`tsc && vite build`)
-  - Result: **Passed cleanly in 1.27s** (0 TypeScript errors, clean production bundle).
+  - Result: **Passed cleanly in 1.16s** (0 TypeScript errors, 254 kB bundle).
 - **Backend Regression Suite**:
   - Command: `.venv/bin/pytest backend/tests -v`
-  - Result: **62 passed in 3.62s** (100% green across unit, API, integration, and security suites).
+  - Result: **62 passed in 3.54s** (100% green across unit, API, integration, and security suites).
 
 ### 15.3 Next Checkpoint
-- **Checkpoint 4: AI Chat Workspace (Conversation list, active conversation view, message history, bounded context display, turn composer, retry affordance)**.
+- **Checkpoint 5: Suggested Actions & Human-in-the-Loop Review Queue**.
 
 
 

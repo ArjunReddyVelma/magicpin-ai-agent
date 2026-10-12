@@ -19,7 +19,7 @@ import {
 } from 'lucide-react';
 
 interface DashboardPageProps {
-  onNavigate: (tab: string) => void;
+  onNavigate: (tab: string, convId?: string) => void;
 }
 
 export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate }) => {
@@ -343,7 +343,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate }) => {
                     {conversations.map((conv) => (
                       <div
                         key={conv.id}
-                        onClick={() => onNavigate('workspace')}
+                        onClick={() => onNavigate('workspace', conv.id)}
                         className="py-2.5 first:pt-0 last:pb-0 flex items-center justify-between gap-3 text-xs cursor-pointer hover:bg-surface-50 px-1 rounded transition-colors"
                       >
                         <div className="min-w-0 flex-1">
