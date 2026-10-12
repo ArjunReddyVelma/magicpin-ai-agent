@@ -503,17 +503,28 @@ In compliance with the mandatory Checkpoint Protocol:
     backend/tests/unit/test_security.py::test_opaque_session_tokens PASSED   [ 95%]
     backend/tests/unit/test_security.py::test_session_bound_csrf_tokens PASSED [ 97%]
     backend/tests/unit/test_security.py::test_login_rate_limiter PASSED      [100%]
-    ============================== 41 passed in 2.12s ==============================
-    ```
+5. **PostgreSQL-Backed Rate Limiting (Phase 4 Hardening)**:
+   - Replaced process-local login rate limiting with `PostgreSQLLoginRateLimiter` utilizing `audit_events` table (`event_type="auth.login_failure"` and `"auth.login_success"`).
+   - Fulfills the architecture specification constraint ("Stateless API instances with PostgreSQL-backed shared state; no process-local source of truth") without introducing Redis.
+   - Tested and verified cross-instance sharing and persistence across application restarts.
+
+### 13.2 Verification Results
+- **Full Backend Test Suite**:
+  - Command: `.venv/bin/pytest backend/tests -v`
+  - Result: **43 passed in 2.06s** (including cross-instance and persistence tests for the rate limiter).
 - **Security & Concurrency Quality Gate Highlights**:
   - `test_context_optimistic_concurrency_conflict`: Verified that stale ETag headers or body versions trigger HTTP 409 Conflict.
   - `test_cross_merchant_context_isolation`: Verified that Tenant B cannot read, update, or delete Tenant A's context items.
   - `test_cross_merchant_conversation_isolation`: Verified that Tenant B cannot access or list messages for Tenant A's conversations.
   - `test_data_persistence_across_sessions`: Verified that records persist in PostgreSQL across logout and re-login.
   - `test_conversation_messages_pagination_and_deterministic_order`: Verified deterministic chronological sorting and pagination.
+  - `test_postgresql_rate_limiter_cross_instance_sharing`: Verified that independent rate limiter instances share failed attempt counts via PostgreSQL.
+  - `test_postgresql_rate_limiter_persistence_across_restarts`: Verified that rate-limiting state survives complete process restarts.
+- **OpenAPI Schema Contract Alignment**:
+  - FastAPI schema compilation verified: 15 canonical endpoints matching `Magicpin_AI_Agent_OpenAPI_v1.yaml`.
 - **Frontend Build Verification**:
   - Command: `npm --prefix frontend run build` (`tsc && vite build`)
-  - Result: **Passed cleanly in 1.12s** (zero TypeScript or bundle errors).
+  - Result: **Passed cleanly in 1.08s** (zero TypeScript or bundle errors).
 
 ### 13.3 Next Phase
 - **Phase 5: AI Chat Service and LLM Abstraction** (`feature/ai-chat`).

@@ -14,6 +14,11 @@ router = APIRouter(prefix="/merchant", tags=["Merchant Profile"])
 
 
 @router.get(
+    "",
+    response_model=MerchantResponse,
+    summary="Get current merchant workspace profile",
+)
+@router.get(
     "/profile",
     response_model=MerchantResponse,
     summary="Get current merchant workspace profile",
@@ -28,6 +33,11 @@ def get_merchant_profile(
     return MerchantResponse.model_validate(merchant)
 
 
+@router.patch(
+    "",
+    response_model=MerchantResponse,
+    summary="Update merchant workspace profile",
+)
 @router.patch(
     "/profile",
     response_model=MerchantResponse,

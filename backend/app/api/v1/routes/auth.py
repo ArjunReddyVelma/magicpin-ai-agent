@@ -120,7 +120,7 @@ def login(
     normalized_email = req.email.lower().strip()
     rate_key = f"{client_ip}:{normalized_email}"
 
-    if login_rate_limiter.is_rate_limited(rate_key):
+    if login_rate_limiter.is_rate_limited(rate_key, db=db):
         raise HTTPException(
             status_code=status.HTTP_429_TOO_MANY_REQUESTS,
             detail={
@@ -136,7 +136,13 @@ def login(
 
     # Constant-time verification check with generic error
     if not user or not verify_password(req.password, user.password_hash) or not user.is_active:
-        login_rate_limiter.record_failure(rate_key)
+        login_rate_limiter.record_failure(
+            rate_key,
+            db=db,
+            email=normalized_email,
+            ip=client_ip,
+            user_id=user.id if user else None,
+        )
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail={
@@ -147,8 +153,15 @@ def login(
             },
         )
 
-    # Success: reset failed counter
-    login_rate_limiter.reset(rate_key)
+    # Success: record success event in PostgreSQL
+    login_rate_limiter.record_success(
+        rate_key,
+        db=db,
+        email=normalized_email,
+        ip=client_ip,
+        user_id=user.id,
+        merchant_id=None,
+    )
 
     merchant_repo = MerchantRepository(db)
     merchant = merchant_repo.get_by_user_id(user.id)
