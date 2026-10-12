@@ -6,41 +6,35 @@ __pycache__/
 
 # Virtual Environment
 venv/
-.env
-
-# macOS
-.DS_Store
-
-# VS Code
-.vscode/
-
-# Logs
-*.log
-
-# Pytest
-# Python
-__pycache__/
-*.py[cod]
-*.pyo
-
-# Virtual environment
-venv/
 .venv/
 
 # Environment variables
 .env
 .env.*
+!.env.example
 
+# Node / Frontend
+node_modules/
+*/node_modules/
+dist/
+*/dist/
+.eslintcache
+
+# macOS
+.DS_Store
+
+# VS Code / IDE
+.vscode/
+.idea/
+
+# Logs
+*.log
+
+# Pytest / Coverage
 .pytest_cache/
-
-# Coverage
 .coverage
 htmlcov/
 
-# Build
+# Build artifacts
 build/
-dist/
 *.egg-info/
-
-# IDE
-.idea/
