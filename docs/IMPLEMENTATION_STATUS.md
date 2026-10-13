@@ -776,6 +776,35 @@ Verified via automated integration test `backend/tests/integration/test_e2e_user
 - **Frontend Production Build**: **Clean build in 1.20s** (`npm --prefix frontend run build`).
 - **Legal Test Suite**: **5 new tests passing** in `frontend/test/legal_pages.test.js`.
 
+---
+
+## 18. Minimal Chat-to-Action Integration Audit & Delivery
+
+**Branch**: `feature/chat-action-generation`  
+**Base Commit**: `54832a3` (`origin/feature/frontend-core`)  
+**Status**: **VERIFIED (Quality Gates Satisfied)**  
+**Date**: October 13, 2026  
+
+### 18.1 Architectural Implementation
+- **Deterministic Eligibility Rule**: Implemented `ChatService._is_draft_eligible` enforcing that only turns combining drafting intent (e.g. `draft`, `reply`, `respond`, `apologize`) and customer/order context (e.g. `customer`, `order`, `delivery`, `refund`, `complaint`, `delayed`) trigger action creation. Casual queries ("Hello", "What are my store hours?") are ignored.
+- **Atomic Transaction & Conversation Row-Lock Guarantee**:
+  - `ActionRepository.create()` updated with `commit: bool = True` parameter.
+  - `ChatService.send_message()` invokes `action_repo.create(..., commit=False)` within the locked conversation transaction, committing user message status transition, assistant message, conversation `last_message_at`, and the pending `reply_draft` action simultaneously.
+  - Zero orphan actions on rollback or provider exceptions.
+- **Idempotency & Replay Protection**:
+  - Replaying completed turns returns cached `ChatResponse` without duplicate action generation.
+  - Retried failed messages verify `payload.op("->>")("user_message_id")` before creating an action, guaranteeing exactly one action per successful turn.
+- **Tenant Isolation & Human-in-the-Loop Boundaries**:
+  - Suggested actions are strictly scoped to `merchant_id` extracted from the authenticated session. Cross-merchant listing, retrieval, and state mutations return HTTP 404.
+  - Approving or dismissing an action exclusively updates PostgreSQL review columns (`status`, `reviewed_at`) with zero external messaging or financial execution side effects.
+
+### 18.2 Verification Test Results
+- **Chat Action Generation Test Suite**: **7 passed in 0.71s** (`backend/tests/api/test_chat_action_generation.py`).
+- **Complete Backend Test Suite**: **77 passed in 4.37s** (`.venv/bin/pytest backend/tests -v`).
+- **Complete Frontend Test Suite**: **42 passed in 135ms** (`npm --prefix frontend test`).
+- **Frontend Production Build**: **Clean build in 1.22s** (`npm --prefix frontend run build`).
+
+
 
 
 
