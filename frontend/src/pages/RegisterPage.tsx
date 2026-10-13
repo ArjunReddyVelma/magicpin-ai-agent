@@ -4,9 +4,15 @@ import { Store, AlertCircle, ArrowRight } from 'lucide-react';
 
 interface RegisterPageProps {
   onSwitchToLogin: () => void;
+  onViewPrivacy?: () => void;
+  onViewTerms?: () => void;
 }
 
-export const RegisterPage: React.FC<RegisterPageProps> = ({ onSwitchToLogin }) => {
+export const RegisterPage: React.FC<RegisterPageProps> = ({
+  onSwitchToLogin,
+  onViewPrivacy,
+  onViewTerms,
+}) => {
   const { register, error, clearError } = useAuth();
   const [fullName, setFullName] = useState('');
   const [email, setEmail] = useState('');
@@ -195,6 +201,26 @@ export const RegisterPage: React.FC<RegisterPageProps> = ({ onSwitchToLogin }) =
                 </>
               )}
             </button>
+
+            <p className="mt-3 text-[11px] text-surface-800 text-center leading-relaxed">
+              By creating a workspace, you agree to the{' '}
+              <button
+                type="button"
+                onClick={onViewTerms}
+                className="underline text-emerald-800 hover:text-emerald-950 font-medium"
+              >
+                Terms of Service
+              </button>{' '}
+              and acknowledge our{' '}
+              <button
+                type="button"
+                onClick={onViewPrivacy}
+                className="underline text-emerald-800 hover:text-emerald-950 font-medium"
+              >
+                Privacy Policy
+              </button>
+              .
+            </p>
           </form>
 
           <div className="mt-6 pt-5 border-t border-surface-200 text-center text-xs text-surface-800">
@@ -207,6 +233,27 @@ export const RegisterPage: React.FC<RegisterPageProps> = ({ onSwitchToLogin }) =
               Sign in here
             </button>
           </div>
+        </div>
+
+        {/* Unauthenticated Legal Footer */}
+        <div className="mt-6 text-center text-[11px] text-surface-800 flex items-center justify-center gap-3">
+          <button
+            type="button"
+            onClick={onViewPrivacy}
+            className="hover:text-surface-900 underline"
+          >
+            Privacy Policy
+          </button>
+          <span>&bull;</span>
+          <button
+            type="button"
+            onClick={onViewTerms}
+            className="hover:text-surface-900 underline"
+          >
+            Terms of Service
+          </button>
+          <span>&bull;</span>
+          <span>Draft Operational Disclosures</span>
         </div>
       </div>
     </div>

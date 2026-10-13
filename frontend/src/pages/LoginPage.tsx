@@ -4,9 +4,15 @@ import { Store, AlertCircle, ArrowRight } from 'lucide-react';
 
 interface LoginPageProps {
   onSwitchToRegister: () => void;
+  onViewPrivacy?: () => void;
+  onViewTerms?: () => void;
 }
 
-export const LoginPage: React.FC<LoginPageProps> = ({ onSwitchToRegister }) => {
+export const LoginPage: React.FC<LoginPageProps> = ({
+  onSwitchToRegister,
+  onViewPrivacy,
+  onViewTerms,
+}) => {
   const { login, error, clearError } = useAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -125,8 +131,27 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onSwitchToRegister }) => {
           </div>
         </div>
 
-        <div className="mt-6 text-center text-[11px] text-surface-800">
-          Isolated session protected with Argon2id and session-bound CSRF validation.
+        <div className="mt-6 text-center text-[11px] text-surface-800 space-y-2">
+          <p>Isolated session protected with Argon2id and session-bound CSRF validation.</p>
+          <div className="flex items-center justify-center gap-3">
+            <button
+              type="button"
+              onClick={onViewPrivacy}
+              className="hover:text-surface-900 underline"
+            >
+              Privacy Policy
+            </button>
+            <span>&bull;</span>
+            <button
+              type="button"
+              onClick={onViewTerms}
+              className="hover:text-surface-900 underline"
+            >
+              Terms of Service
+            </button>
+            <span>&bull;</span>
+            <span>Draft Disclosures</span>
+          </div>
         </div>
       </div>
     </div>

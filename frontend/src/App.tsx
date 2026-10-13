@@ -8,10 +8,12 @@ import { ContextPage } from './pages/ContextPage';
 import { WorkspacePage } from './pages/WorkspacePage';
 import { ActionsPage } from './pages/ActionsPage';
 import { SettingsPage } from './pages/SettingsPage';
+import { PrivacyPolicyPage } from './pages/PrivacyPolicyPage';
+import { TermsOfServicePage } from './pages/TermsOfServicePage';
 
 function AppShell() {
   const { isAuthenticated, isLoading } = useAuth();
-  const [authView, setAuthView] = useState<'login' | 'register'>('login');
+  const [authView, setAuthView] = useState<'login' | 'register' | 'privacy' | 'terms'>('login');
   const [activeTab, setActiveTab] = useState<string>('dashboard');
   const [selectedConvId, setSelectedConvId] = useState<string | null>(null);
 
@@ -31,10 +33,28 @@ function AppShell() {
   }
 
   if (!isAuthenticated) {
-    if (authView === 'register') {
-      return <RegisterPage onSwitchToLogin={() => setAuthView('login')} />;
+    if (authView === 'privacy') {
+      return <PrivacyPolicyPage onBack={() => setAuthView('login')} />;
     }
-    return <LoginPage onSwitchToRegister={() => setAuthView('register')} />;
+    if (authView === 'terms') {
+      return <TermsOfServicePage onBack={() => setAuthView('login')} />;
+    }
+    if (authView === 'register') {
+      return (
+        <RegisterPage
+          onSwitchToLogin={() => setAuthView('login')}
+          onViewPrivacy={() => setAuthView('privacy')}
+          onViewTerms={() => setAuthView('terms')}
+        />
+      );
+    }
+    return (
+      <LoginPage
+        onSwitchToRegister={() => setAuthView('register')}
+        onViewPrivacy={() => setAuthView('privacy')}
+        onViewTerms={() => setAuthView('terms')}
+      />
+    );
   }
 
   const handleNavigate = (tab: string, convId?: string) => {
@@ -58,6 +78,10 @@ function AppShell() {
         {activeTab === 'actions' && <ActionsPage />}
 
         {activeTab === 'settings' && <SettingsPage />}
+
+        {activeTab === 'privacy' && <PrivacyPolicyPage onBack={() => setActiveTab('dashboard')} />}
+
+        {activeTab === 'terms' && <TermsOfServicePage onBack={() => setActiveTab('dashboard')} />}
       </main>
 
       {/* Product Footer */}
@@ -65,8 +89,20 @@ function AppShell() {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-col sm:flex-row items-center justify-between text-[11px] text-surface-800 gap-2">
           <div>Magicpin AI Agent &bull; Standalone Merchant Workspace v1.0</div>
           <div className="flex items-center gap-4">
-            <a href="#privacy" className="hover:text-surface-900 underline">Privacy Policy</a>
-            <a href="#terms" className="hover:text-surface-900 underline">Terms of Service</a>
+            <button
+              type="button"
+              onClick={() => setActiveTab('privacy')}
+              className="hover:text-surface-900 underline"
+            >
+              Privacy Policy
+            </button>
+            <button
+              type="button"
+              onClick={() => setActiveTab('terms')}
+              className="hover:text-surface-900 underline"
+            >
+              Terms of Service
+            </button>
             <span>Isolated Merchant Deployment</span>
           </div>
         </div>

@@ -729,6 +729,54 @@ Verified via automated integration test `backend/tests/integration/test_e2e_user
 - **Frontend Production Build**: **Clean build in 1.15s** (`npm --prefix frontend run build`).
 - **OpenAPI Validation**: **20 endpoints verified** (`app.openapi()`).
 
+---
+
+## 17. Pre-Publication Follow-Up Audit: Legal Pages & Production Configuration Review
+
+**Branch**: `feature/frontend-core`  
+**Status**: **VERIFIED (Pre-Publication Follow-Up Complete)**  
+**Date**: October 13, 2026  
+
+### 17.1 Legal Pages Implementation (Follow-up 1)
+- **Accessible Legal Pages**:
+  - `PrivacyPolicyPage.tsx`: Operational data handling disclosure, collection categories, Groq/Llama processing details, data retention schedules, atomic account deletion cascade (`ON DELETE CASCADE`), and technical security architecture.
+  - `TermsOfServicePage.tsx`: Service scope (internal merchant copilot, not autonomous messaging bot or financial processor), human-in-the-loop guarantee (approvals record decisions in DB; zero external WhatsApp/SMS/financial side effects), AI probabilistic nature disclaimers, merchant obligations, and account security.
+- **Restrained SaaS Design & Navigation**: Matches slate/emerald SaaS design; fully reachable from:
+  - Register page (`onViewPrivacy`, `onViewTerms`, inline agreement notice, unauthenticated footer).
+  - Login page (`onViewPrivacy`, `onViewTerms`, unauthenticated footer).
+  - Authenticated workspace footer (navigates to `privacy` and `terms` views with 'Return to Workspace' action).
+- **Compliance & Integrity Guards**:
+  - Zero false claims about certifications (ISO 27001, SOC 2, HIPAA).
+  - Explicit warning boxes: **Notice: Draft Operational Disclosure • Legal Review Pending** (states formal legal review has not yet occurred).
+  - Dedicated callout boxes marking items requiring legal/product-owner confirmation: `[Requires Legal / Product-Owner Confirmation]` across Groq/Meta DPA terms, statutory data retention schedules, account erasure procedures under applicable laws, and governing law/dispute resolution jurisdiction.
+
+### 17.2 Production Configuration Review (Follow-up 2)
+- **Render Turnkey Blueprint (`render.yaml`)**:
+  - Managed PostgreSQL persistence (`magicpin-postgres`, PostgreSQL 16).
+  - Backend Web Service (`magicpin-backend`):
+    - Build: `pip install -r backend/requirements.txt`
+    - Start: `alembic -c backend/alembic.ini upgrade head && uvicorn backend.app.main:app --host 0.0.0.0 --port $PORT`
+    - Health check: `/v1/readyz` (exercises `SELECT 1` via connection pool)
+    - Auto-generated production secrets: `SECRET_KEY`, `CSRF_SECRET`
+    - Dynamic database connection string injection with dialect normalization validator supporting `postgres://`, `postgresql://`, and `postgresql+psycopg://`.
+  - Frontend Static Site (`magicpin-frontend`):
+    - Build: `npm --prefix frontend install && npm --prefix frontend run build`
+    - Publish directory: `frontend/dist`
+    - Reverse-proxy rewrites: `/v1/*` directed to backend web service, `/*` directed to `/index.html` for client routing.
+- **Production Security & Environment Verification**:
+  - `COOKIE_SECURE`: Enforced via `settings.COOKIE_SECURE or (settings.APP_ENV == "production")` in `dependencies.py` (lines 35, 47).
+  - CORS Restrictions: In non-development mode (`APP_ENV=production`), `cors_origins` is strictly restricted to `[FRONTEND_ORIGIN]`.
+  - Server-Side Secret Isolation: Zero API keys or secrets in client code; `LLM_API_KEY` isolated to backend server environment with `sync: false`.
+  - Database Migrations: Automated idempotent Alembic execution on web service startup (`upgrade head`).
+  - Readiness Probes: `GET /v1/healthz` (liveness) and `GET /v1/readyz` (dependency check returning 503 if DB is unreachable).
+
+### 17.3 Verification Test Results
+- **Full Backend Suite**: **70 passed in 3.95s** (`.venv/bin/pytest backend/tests -v`).
+- **Frontend Test Suite**: **42 passed in 108ms** (`npm --prefix frontend test`).
+- **Frontend Production Build**: **Clean build in 1.20s** (`npm --prefix frontend run build`).
+- **Legal Test Suite**: **5 new tests passing** in `frontend/test/legal_pages.test.js`.
+
+
 
 
 

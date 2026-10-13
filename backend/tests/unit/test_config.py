@@ -13,3 +13,18 @@ def test_default_settings():
 def test_cors_origins_includes_frontend():
     custom = Settings(FRONTEND_ORIGIN="http://merchant.magicpin.com")
     assert "http://merchant.magicpin.com" in custom.cors_origins
+
+
+def test_database_url_normalization():
+    # Render postgres:// format
+    render_style = Settings(DATABASE_URL="postgres://user:pass@host:5432/db")
+    assert render_style.DATABASE_URL == "postgresql+psycopg://user:pass@host:5432/db"
+
+    # Standard postgresql:// format without dialect
+    standard = Settings(DATABASE_URL="postgresql://user:pass@host:5432/db")
+    assert standard.DATABASE_URL == "postgresql+psycopg://user:pass@host:5432/db"
+
+    # Explicit psycopg dialect preserved
+    explicit = Settings(DATABASE_URL="postgresql+psycopg://user:pass@host:5432/db")
+    assert explicit.DATABASE_URL == "postgresql+psycopg://user:pass@host:5432/db"
+
