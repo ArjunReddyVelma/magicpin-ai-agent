@@ -51,6 +51,8 @@ class ActionRepository(BaseRepository):
         conversation_id: Optional[uuid.UUID] = None,
         payload: Optional[Any] = None,
         created_by: str = "assistant",
+        status: str = "pending",
+        commit: bool = True,
     ) -> SuggestedAction:
         action = SuggestedAction(
             merchant_id=merchant_id,
@@ -59,12 +61,15 @@ class ActionRepository(BaseRepository):
             title=title.strip(),
             description=description.strip(),
             payload=payload,
-            status="pending",
+            status=status,
             created_by=created_by,
         )
         self.db.add(action)
-        self.db.commit()
-        self.db.refresh(action)
+        if commit:
+            self.db.commit()
+            self.db.refresh(action)
+        else:
+            self.db.flush()
         return action
 
     def update_content(

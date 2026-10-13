@@ -13,9 +13,11 @@ from backend.app.core.logging import logger
 from backend.app.models.merchant_profile import MerchantProfile
 from backend.app.models.conversation import Conversation
 from backend.app.models.message import Message
+from backend.app.models.suggested_action import SuggestedAction
 
 from backend.app.repositories.conversation_repository import ConversationRepository
 from backend.app.repositories.message_repository import MessageRepository
+from backend.app.repositories.action_repository import ActionRepository
 from backend.app.schemas.message import (
     MessageResponse,
     ContextUsedItem,
@@ -44,6 +46,68 @@ class ChatService:
         self.context_retriever = context_retriever or ContextRetriever()
         self.prompt_builder = prompt_builder or PromptBuilder()
         self.response_validator = response_validator or ResponseValidator()
+
+    @staticmethod
+    def _is_draft_eligible(user_content: str, assistant_content: str) -> bool:
+        """
+        Narrow deterministic eligibility rule for customer-support draft actions.
+        Requires both drafting intent (draft/reply/respond) and customer/order context.
+        """
+        if not user_content or not assistant_content:
+            return False
+
+        user_lower = user_content.lower().strip()
+        assistant_lower = assistant_content.lower().strip()
+
+        # Guard against short greetings, empty inputs, or error fallbacks
+        if len(user_lower) < 5 or len(assistant_lower) < 20:
+            return False
+        if assistant_lower.startswith("i apologize, but i could not generate a response"):
+            return False
+
+        # Direct drafting and reply intent verbs / phrases
+        draft_verbs = (
+            "draft",
+            "reply",
+            "respond",
+            "response",
+            "apologize",
+            "apology",
+            "how to reply",
+            "how to respond",
+            "how should i reply",
+            "how should i respond",
+            "what should i reply",
+            "what should i say",
+            "what should i tell",
+        )
+        has_draft_intent = any(verb in user_lower for verb in draft_verbs)
+
+        # Customer, order, and support context keywords
+        customer_indicators = (
+            "customer",
+            "client",
+            "order",
+            "delivery",
+            "refund",
+            "complaint",
+            "delayed",
+            "delay",
+            "cancel",
+            "cancellation",
+            "buyer",
+            "guest",
+        )
+        has_customer_context = any(ind in user_lower for ind in customer_indicators)
+
+        return has_draft_intent and has_customer_context
+
+    @staticmethod
+    def _generate_action_title(conversation_title: Optional[str], user_content: str) -> str:
+        if conversation_title and conversation_title.strip() and conversation_title.strip().lower() != "new conversation":
+            return f"Customer Reply: {conversation_title.strip()}"[:200]
+        snippet = " ".join(user_content.strip().split())[:60]
+        return f"Reply Draft: {snippet}"[:200]
 
     def send_message(
         self,
@@ -259,6 +323,33 @@ class ChatService:
                 },
                 commit=False,
             )
+
+            # 8. Deterministic customer-support draft generation for Suggested Actions
+            if self._is_draft_eligible(user_msg.content, validated_content):
+                # Ensure idempotency: verify an action hasn't already been created for this turn
+                existing_action_stmt = select(SuggestedAction).where(
+                    SuggestedAction.conversation_id == conversation_id,
+                    SuggestedAction.merchant_id == merchant.id,
+                    SuggestedAction.payload.op("->>")("user_message_id") == str(user_msg.id),
+                )
+                existing_action = db.scalars(existing_action_stmt).first()
+                if not existing_action:
+                    action_repo = ActionRepository(db)
+                    action_repo.create(
+                        merchant_id=merchant.id,
+                        conversation_id=conversation_id,
+                        action_type="reply_draft",
+                        title=self._generate_action_title(conv.title, user_msg.content),
+                        description=validated_content,
+                        payload={
+                            "generated_reply": validated_content,
+                            "user_message_id": str(user_msg.id),
+                            "conversation_id": str(conversation_id),
+                        },
+                        status="pending",
+                        created_by="assistant",
+                        commit=False,
+                    )
 
             user_msg_response = MessageResponse.model_validate(user_msg)
             assistant_msg_response = MessageResponse.model_validate(assistant_msg)
