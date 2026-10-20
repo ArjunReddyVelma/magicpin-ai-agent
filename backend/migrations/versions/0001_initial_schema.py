@@ -151,6 +151,7 @@ def upgrade() -> None:
         sa.Column("created_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.text("now()")),
     )
     op.create_index("ix_audit_events_merchant_id", "audit_events", ["merchant_id"])
+    op.create_index("ix_audit_events_user_id", "audit_events", ["user_id"])
     op.create_index("ix_audit_events_merchant_created", "audit_events", ["merchant_id", "created_at"])
 
 
