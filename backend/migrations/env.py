@@ -10,22 +10,31 @@ from alembic import context
 # Add backend directory to sys.path
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..")))
 
-from backend.app.core.config import settings
+from backend.app.core.config import settings, normalize_database_url
 from backend.app.models import Base
 
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.
-config = context.config
+try:
+    config = context.config
+except (AttributeError, Exception):
+    config = None
 
 # Interpret the config file for Python logging.
-if config.config_file_name is not None:
+if config is not None and config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
 target_metadata = Base.metadata
 
 # Override URL dynamically
-db_url = os.getenv("ALEMBIC_DATABASE_URL") or config.get_main_option("sqlalchemy.url") or settings.DATABASE_URL
-config.set_main_option("sqlalchemy.url", db_url)
+raw_url = (
+    os.getenv("ALEMBIC_DATABASE_URL")
+    or (config.get_main_option("sqlalchemy.url") if config is not None else None)
+    or settings.DATABASE_URL
+)
+db_url = normalize_database_url(raw_url)
+if config is not None:
+    config.set_main_option("sqlalchemy.url", db_url)
 
 
 def run_migrations_offline() -> None:

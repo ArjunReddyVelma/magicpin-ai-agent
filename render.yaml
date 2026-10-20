@@ -59,7 +59,7 @@ services:
     runtime: static
     region: oregon
     plan: starter
-    buildCommand: npm --prefix frontend install && npm --prefix frontend run build
+    buildCommand: npm --prefix frontend ci && npm --prefix frontend run build
     staticPublishPath: frontend/dist
     routes:
       - type: rewrite

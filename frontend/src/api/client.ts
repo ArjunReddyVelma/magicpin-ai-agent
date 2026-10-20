@@ -30,10 +30,43 @@ export class ApiClientError extends Error {
   }
 }
 
-class ApiClient {
-  private baseUrl: string = '/v1';
+/**
+ * Resolves and normalizes the backend API base URL.
+ *
+ * Expected formats for VITE_API_BASE_URL:
+ * - Unset or empty: defaults to '/v1' (compatible with local Vite proxy and Render rewrite rules).
+ * - Full origin without path: 'https://backend.example.com' -> 'https://backend.example.com/v1'
+ * - Full origin with '/v1': 'https://backend.example.com/v1' -> 'https://backend.example.com/v1'
+ * - Relative base: '/custom-api' -> '/custom-api/v1' (or '/custom-api/v1' -> '/custom-api/v1')
+ *
+ * Automatically prevents double '/v1/v1' and removes trailing slashes.
+ */
+export function resolveBaseUrl(envUrl?: string): string {
+  if (!envUrl || !envUrl.trim()) {
+    return '/v1';
+  }
+  const cleaned = envUrl.trim().replace(/\/+$/, '');
+  if (cleaned.endsWith('/v1')) {
+    return cleaned;
+  }
+  return `${cleaned}/v1`;
+}
+
+export class ApiClient {
+  private baseUrl: string;
   private csrfToken: string | null = null;
   private onUnauthorized: (() => void) | null = null;
+
+  constructor(customBaseUrl?: string) {
+    const envUrl = typeof import.meta !== 'undefined' && import.meta.env
+      ? import.meta.env.VITE_API_BASE_URL
+      : undefined;
+    this.baseUrl = customBaseUrl ? resolveBaseUrl(customBaseUrl) : resolveBaseUrl(envUrl);
+  }
+
+  public getBaseUrl(): string {
+    return this.baseUrl;
+  }
 
   public setCsrfToken(token: string | null) {
     this.csrfToken = token;
