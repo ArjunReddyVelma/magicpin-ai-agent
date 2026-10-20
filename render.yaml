@@ -80,7 +80,7 @@ databases:
   # IMPORTANT NOTICE:
   # - Render Free PostgreSQL instances expire 30 days after creation.
   # - Free databases have no automated backups and are not durable storage.
-  # - Max 1 GB storage, 0.1 CPU, 256 MB RAM, max 50 concurrent connections.
+  # - Max 1 GB storage, 0.1 CPU, 256 MB RAM, max 100 concurrent connections.
   # - Suitable strictly for educational demonstration, development, and testing.
   - name: magicpin-postgres
     databaseName: magicpin_ai_agent
