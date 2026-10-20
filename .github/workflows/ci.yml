@@ -42,7 +42,6 @@ jobs:
       DATABASE_URL_TEST: postgresql+psycopg://postgres:postgrespassword@localhost:5432/magicpin_ai_agent_test
       SECRET_KEY: test-dummy-secret-key-for-ci-testing-only-32chars
       CSRF_SECRET: test-dummy-csrf-secret-for-ci-testing-only-32chars
-      LLM_PROVIDER: mock
       LLM_API_KEY: ""
       FRONTEND_ORIGIN: http://localhost:5173
     steps:
