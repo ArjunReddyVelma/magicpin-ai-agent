@@ -120,7 +120,7 @@ export const WorkspacePage: React.FC<WorkspacePageProps> = ({ initialConversatio
 
   useEffect(() => {
     fetchConversations();
-  }, [statusFilter, searchQuery]);
+  }, [fetchConversations]);
 
   // Fetch messages for active conversation
   const fetchMessages = useCallback(async (conversationId: string, page = 1) => {
@@ -166,7 +166,7 @@ export const WorkspacePage: React.FC<WorkspacePageProps> = ({ initialConversatio
       setMessages([]);
       setTotalMessages(0);
     }
-  }, [selectedConversationId]);
+  }, [selectedConversationId, fetchMessages]);
 
   useEffect(() => {
     if (messages.length > 0 && currentPage === 1) {
