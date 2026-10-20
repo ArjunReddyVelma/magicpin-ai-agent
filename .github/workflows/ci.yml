@@ -1,0 +1,98 @@
+name: CI Quality Gate
+
+on:
+  push:
+    branches:
+      - main
+      - 'feature/**'
+      - 'chore/**'
+      - 'fix/**'
+  pull_request:
+    branches:
+      - main
+      - 'feature/**'
+      - 'chore/**'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  backend-quality:
+    name: Backend Tests & Migrations
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgrespassword
+          POSTGRES_DB: magicpin_ai_agent_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      APP_ENV: testing
+      APP_NAME: "Magicpin AI Agent"
+      DATABASE_URL: postgresql+psycopg://postgres:postgrespassword@localhost:5432/magicpin_ai_agent_test
+      DATABASE_URL_TEST: postgresql+psycopg://postgres:postgrespassword@localhost:5432/magicpin_ai_agent_test
+      SECRET_KEY: test-dummy-secret-key-for-ci-testing-only-32chars
+      CSRF_SECRET: test-dummy-csrf-secret-for-ci-testing-only-32chars
+      LLM_PROVIDER: mock
+      LLM_API_KEY: ""
+      FRONTEND_ORIGIN: http://localhost:5173
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install backend dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r backend/requirements.txt
+
+      - name: Verify Alembic configuration from repository root
+        run: |
+          python -m alembic -c backend/alembic.ini check
+
+      - name: Run Backend Test Suite
+        run: |
+          pytest backend/tests -v
+
+  frontend-quality:
+    name: Frontend Lint, Test & Build
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install frontend dependencies
+        run: npm ci
+
+      - name: Run ESLint
+        run: npm run lint
+
+      - name: Run Frontend Tests
+        run: npm test
+
+      - name: Run Frontend Production Build
+        run: npm run build
