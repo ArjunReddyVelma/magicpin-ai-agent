@@ -1,8 +1,8 @@
-# Render Blueprint Specification for Magicpin AI Agent
+# Render Blueprint Specification for Magicpin AI Agent (Educational / Free-Tier)
 # Architecture:
-# - PostgreSQL Database: Managed relational persistence with foreign-key cascades
-# - Web Service (Backend): FastAPI application with Alembic pre-deploy migrations
-# - Static Site (Frontend): Single-page React application with Vite and Tailwind
+# - PostgreSQL Database: Ephemeral 30-day Free PostgreSQL (max 1 GB, testing/educational)
+# - Web Service (Backend): Free FastAPI web service (single-instance) with startup Alembic migrations
+# - Static Site (Frontend): Free React SPA hosted on global CDN
 
 version: "1"
 
@@ -12,10 +12,11 @@ services:
     name: magicpin-backend
     runtime: python
     region: oregon
-    plan: starter
+    plan: free
     buildCommand: pip install -r backend/requirements.txt
-    preDeployCommand: alembic -c backend/alembic.ini upgrade head
-    startCommand: uvicorn backend.app.main:app --host 0.0.0.0 --port $PORT
+    # Note: Free web services do not support preDeployCommand.
+    # In single-instance free tier, migrations execute safely at startup prior to port binding.
+    startCommand: alembic -c backend/alembic.ini upgrade head && uvicorn backend.app.main:app --host 0.0.0.0 --port $PORT
     healthCheckPath: /v1/readyz
     envVars:
       - key: APP_ENV
@@ -58,7 +59,7 @@ services:
   - type: web
     name: magicpin-frontend
     runtime: static
-    plan: starter
+    # Note: Static sites are hosted on Render's global CDN, are free by default, and do not accept a plan field.
     buildCommand: npm --prefix frontend ci && npm --prefix frontend run build
     staticPublishPath: frontend/dist
     routes:
@@ -75,10 +76,15 @@ services:
         destination: /index.html
 
 databases:
-  # Managed PostgreSQL Persistence
+  # Ephemeral PostgreSQL Persistence (Free Tier / Educational)
+  # IMPORTANT NOTICE:
+  # - Render Free PostgreSQL instances expire 30 days after creation.
+  # - Free databases have no automated backups and are not durable storage.
+  # - Max 1 GB storage, 0.1 CPU, 256 MB RAM, max 100 concurrent connections.
+  # - Suitable strictly for educational demonstration, development, and testing.
   - name: magicpin-postgres
     databaseName: magicpin_ai_agent
     user: magicpin
     region: oregon
-    plan: starter
+    plan: free
     postgresMajorVersion: 16
