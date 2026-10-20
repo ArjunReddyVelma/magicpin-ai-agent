@@ -14,7 +14,8 @@ services:
     region: oregon
     plan: starter
     buildCommand: pip install -r backend/requirements.txt
-    startCommand: alembic -c backend/alembic.ini upgrade head && uvicorn backend.app.main:app --host 0.0.0.0 --port $PORT
+    preDeployCommand: alembic -c backend/alembic.ini upgrade head
+    startCommand: uvicorn backend.app.main:app --host 0.0.0.0 --port $PORT
     healthCheckPath: /v1/readyz
     envVars:
       - key: APP_ENV
@@ -62,9 +63,14 @@ services:
     buildCommand: npm --prefix frontend ci && npm --prefix frontend run build
     staticPublishPath: frontend/dist
     routes:
+      # API Proxy Rewrite: routes /v1/* to the backend web service preserving path and cookies.
+      # Note: 'https://magicpin-backend.onrender.com' assumes default subdomain availability.
+      # If Render allocates a suffixed hostname (e.g. magicpin-backend-xxxx.onrender.com),
+      # update this destination to match the actual allocated backend URL.
       - type: rewrite
         source: /v1/*
         destination: https://magicpin-backend.onrender.com/v1/*
+      # SPA Catch-all: routes all other paths to index.html for client-side routing.
       - type: rewrite
         source: /*
         destination: /index.html
