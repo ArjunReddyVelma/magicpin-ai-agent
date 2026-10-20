@@ -58,7 +58,6 @@ services:
   - type: web
     name: magicpin-frontend
     runtime: static
-    region: oregon
     plan: starter
     buildCommand: npm --prefix frontend ci && npm --prefix frontend run build
     staticPublishPath: frontend/dist
