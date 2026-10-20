@@ -472,13 +472,11 @@ createdb magicpin_ai_agent
 psql -U postgres -c "CREATE DATABASE magicpin_ai_agent;"
 ```
 
-### Alembic Migration Note
-The Alembic configuration in `backend/alembic.ini` contains a relative `script_location = migrations` setting. When invoking Alembic from the repository root, Alembic attempts to resolve `./migrations` rather than `./backend/migrations`.
+### Alembic Migration Architecture
+The Alembic configuration in `backend/alembic.ini` uses `script_location = %(here)s/migrations`. This configuration dynamically anchors the migration script path to the directory containing `alembic.ini`, allowing migrations to run seamlessly from the repository root, from within `backend/`, or inside deployment containers:
 
-To apply migrations cleanly without modifying repository configuration during local runs, generate a temporary configuration that references `backend/migrations`:
 ```bash
-sed 's|^script_location = migrations$|script_location = backend/migrations|' backend/alembic.ini > /tmp/magicpin-alembic.ini
-.venv/bin/alembic -c /tmp/magicpin-alembic.ini upgrade head
+.venv/bin/alembic -c backend/alembic.ini upgrade head
 ```
 
 ---
@@ -512,11 +510,22 @@ npm --prefix frontend test
 - Account Deletion & Session Logout (7 tests)
 - Conversations, Message Retries & Provider Failure Recovery (8 tests)
 
+### Frontend Linting (ESLint)
+```bash
+npm --prefix frontend run lint
+```
+**Results**: Clean linting with zero warnings and zero errors across all TypeScript and React source files (`eslint . --ext ts,tsx --report-unused-disable-directives --max-warnings 0`).
+
 ### Frontend Production Build
 ```bash
 npm --prefix frontend run build
 ```
 **Results**: Clean production compilation with TypeScript typechecking (`tsc && vite build`), generating optimized bundles in `frontend/dist`.
+
+### Continuous Integration (GitHub Actions)
+The repository defines an automated CI workflow in [`.github/workflows/ci.yml`](.github/workflows/ci.yml) that executes on all pushes and pull requests across `main`, `feature/**`, and `chore/**` branches:
+- **Backend Quality**: Runs with a dedicated PostgreSQL 16 service container, checks Alembic migrations from root, and executes the complete 77-test Pytest suite with `LLM_PROVIDER=mock`.
+- **Frontend Quality**: Sets up Node.js 20, runs ESLint (`npm run lint`), Node.js unit tests (`npm test`), and the production build (`npm run build`).
 
 ---
 
@@ -528,6 +537,7 @@ npm --prefix frontend run build
 3. **Single Provider Configuration**: Provider selection is configured globally via environment variables rather than on a per-merchant basis.
 4. **Relational Keyword Context Retrieval**: Context items are retrieved via active status and exact/metadata queries. High-dimensional vector embeddings and similarity search (e.g., `pgvector`) are not yet integrated.
 5. **No Outbound Messaging Automation**: In compliance with the Human-in-the-Loop review constraint, the system does not integrate external WhatsApp, SMS, or email dispatch APIs. Approvals record decisions only.
+6. **Default Branch History Alignment**: The GitHub repository's default branch `main` contains an unrelated Git history from an early single-directory prototype. The modular redesign resides on active feature branches (`origin/feature/frontend-core` containing merged PR #1 and `chore/repository-alignment-hardening`). Merging or reconciling the default branch is documented as an outstanding item pending project consensus.
 
 ### Planned Improvements
 - Integration of `pgvector` for semantic context retrieval across extensive merchant catalogs.
@@ -535,6 +545,7 @@ npm --prefix frontend run build
 - Multi-user merchant teams with granular role permissions.
 - Outbound messaging integration with merchant confirmation webhooks.
 - Multi-channel support (inbound WhatsApp/Zendesk integration).
+- Reconcile `main` branch with the modular architecture baseline.
 
 ---
 
@@ -617,13 +628,12 @@ Open `.env` and verify the settings:
     ```
 
 ### 6. Create the Database and Apply Migrations
-Ensure PostgreSQL is running, create the development database, and apply migrations using the verified Alembic configuration workaround:
+Ensure PostgreSQL is running, create the development database, and apply migrations directly using Alembic:
 ```bash
 createdb magicpin_ai_agent
 
 # Apply database migrations
-sed 's|^script_location = migrations$|script_location = backend/migrations|' backend/alembic.ini > /tmp/magicpin-alembic.ini
-.venv/bin/alembic -c /tmp/magicpin-alembic.ini upgrade head
+.venv/bin/alembic -c backend/alembic.ini upgrade head
 ```
 
 ### 7. Start the Backend Server

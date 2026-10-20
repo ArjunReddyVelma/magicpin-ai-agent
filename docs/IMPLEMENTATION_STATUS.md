@@ -847,6 +847,46 @@ Verified via automated integration test `backend/tests/integration/test_e2e_user
 - Secure environment configuration of production secrets (`SECRET_KEY`, `CSRF_SECRET`, and `LLM_API_KEY`) on the hosting provider (Render).
 - Formal legal review of terms and privacy policy disclosures prior to public merchant onboarding.
 
+---
+
+## 20. Milestone 7: Repository Alignment, Configuration Hardening, ESLint & CI Quality Gate
+
+**Branch**: `chore/repository-alignment-hardening`
+**Base Commit**: `364af70` (`origin/feature/frontend-core`, merged PR #1)
+**Status**: **VERIFIED**
+**Date**: October 20, 2026
+
+### 20.1 Architectural & Configuration Hardening
+1. **Alembic Path Normalization**:
+   - Updated `backend/alembic.ini` line 2 from relative `script_location = migrations` to `script_location = %(here)s/migrations`.
+   - Anchors migration discovery dynamically relative to the configuration file directory (`backend/`).
+   - Enables `.venv/bin/alembic -c backend/alembic.ini upgrade head` to run seamlessly from the repository root without temporary file or `sed` workarounds.
+   - Restores turnkey compatibility with Render's configured `startCommand` in `render.yaml`.
+   - Verified with upgrade, downgrade, and re-upgrade cycles against dedicated test database.
+2. **Frontend Linting Setup & Strict Rule Adherence**:
+   - Added standard development dependencies: `eslint@^8.57.1`, `@typescript-eslint/parser@^7.18.0`, `@typescript-eslint/eslint-plugin@^7.18.0`, `eslint-plugin-react-hooks@^4.6.2`, and `eslint-plugin-react-refresh@^0.4.14`.
+   - Added `frontend/.eslintrc.cjs` with standard Vite React TypeScript configuration and `--max-warnings 0`.
+   - Cleaned up React hook dependencies in `frontend/src/pages/WorkspacePage.tsx` (`fetchConversations` and `fetchMessages` included in `useEffect` dependency arrays) and added explicit fast-refresh annotation for `useAuth` in `frontend/src/context/AuthContext.tsx`.
+   - Command `npm --prefix frontend run lint` executes with 0 warnings and 0 errors.
+3. **Automated Continuous Integration (GitHub Actions)**:
+   - Created `.github/workflows/ci.yml` defining parallel `backend-quality` and `frontend-quality` jobs.
+   - Configured dedicated PostgreSQL 16 service container with health checks for backend integration tests.
+   - Enforced safe test-only environment variables (`LLM_PROVIDER=mock`, zero live API secrets).
+   - Validated YAML syntax with automated quality gates running on pushes and PRs.
+4. **Preservation of Untracked Work**:
+   - Preserved all untracked report generation outputs and reference files in `docs/figures/`, `docs/reference_reports/`, and `scripts/`.
+   - Retained separate clone `/Users/reddy/magicpin_ai_agent` untouched.
+5. **Outstanding Default-Branch Alignment**:
+   - Formally documented the separate Git history on default branch `main` as an outstanding item pending architectural promotion/reconciliation.
+
+### 20.2 Verification Baseline
+- **Backend Test Suite**: **77 passed** in 4.41s (`.venv/bin/pytest backend/tests -v`).
+- **Frontend Test Suite**: **42 passed** in 111ms (`npm --prefix frontend test`).
+- **Frontend Linter**: **Clean run** (0 errors, 0 warnings) (`npm --prefix frontend run lint`).
+- **Frontend Production Build**: **Clean build** in 1.18s (`npm --prefix frontend run build`).
+- **Alembic Root Migration Check**: **Verified** (`python -m alembic -c backend/alembic.ini check`).
+- **Production Deployment Status**: Explicitly unperformed.
+
 
 
 
