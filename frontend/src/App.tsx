@@ -10,6 +10,7 @@ import { ActionsPage } from './pages/ActionsPage';
 import { SettingsPage } from './pages/SettingsPage';
 import { PrivacyPolicyPage } from './pages/PrivacyPolicyPage';
 import { TermsOfServicePage } from './pages/TermsOfServicePage';
+import { WhatsAppInboxPage } from './pages/WhatsAppInboxPage';
 
 function AppShell() {
   const { isAuthenticated, isLoading } = useAuth();
@@ -76,6 +77,8 @@ function AppShell() {
         {activeTab === 'context' && <ContextPage />}
 
         {activeTab === 'actions' && <ActionsPage />}
+
+        {activeTab === 'whatsapp' && <WhatsAppInboxPage />}
 
         {activeTab === 'settings' && <SettingsPage />}
 

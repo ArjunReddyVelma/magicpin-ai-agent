@@ -1,5 +1,5 @@
 import React from 'react';
-import { Store, MessageSquare, BookOpen, CheckSquare, Settings, LogOut, ShieldCheck } from 'lucide-react';
+import { Store, MessageSquare, BookOpen, CheckSquare, Settings, LogOut, ShieldCheck, MessageCircle } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 
 interface NavbarProps {
@@ -15,6 +15,7 @@ export const Navbar: React.FC<NavbarProps> = ({ activeTab, onTabChange }) => {
     { id: 'workspace', label: 'AI Workspace', icon: MessageSquare },
     { id: 'context', label: 'Merchant Context', icon: BookOpen },
     { id: 'actions', label: 'Drafts & Actions', icon: CheckSquare },
+    { id: 'whatsapp', label: 'WhatsApp Inbox', icon: MessageCircle },
     { id: 'settings', label: 'Settings', icon: Settings },
   ];
 
