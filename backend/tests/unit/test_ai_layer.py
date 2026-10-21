@@ -139,3 +139,41 @@ def test_groq_provider_success(mock_client_cls):
     assert res.provider == "groq"
     assert res.input_tokens == 50
     assert res.output_tokens == 20
+
+
+@patch("httpx.Client")
+def test_groq_provider_error_payload_extraction(mock_client_cls):
+    """
+    Regression test: Verifies that when Groq returns an HTTP 4xx error with a detailed JSON body
+    (such as a 404 model_not_found error), the error message is preserved in LLMProviderError.
+    """
+    mock_client = MagicMock()
+    mock_client_cls.return_value.__enter__.return_value = mock_client
+
+    mock_resp = MagicMock()
+    mock_resp.status_code = 404
+    mock_resp.json.return_value = {
+        "error": {
+            "message": "The model `llama-3.3-70b-versatile` does not exist or you do not have access to it.",
+            "type": "invalid_request_error",
+            "code": "model_not_found",
+        }
+    }
+    mock_client.post.return_value = mock_resp
+
+    provider = GroqProvider(api_key="gsk_valid_key", model="llama-3.3-70b-versatile")
+    with pytest.raises(LLMProviderError) as exc_info:
+        provider.generate_response("System prompt", [{"role": "user", "content": "Hello"}])
+
+    assert exc_info.value.status_code == 502
+    assert exc_info.value.retryable is False
+    assert "HTTP 404" in str(exc_info.value)
+    assert "The model `llama-3.3-70b-versatile` does not exist" in str(exc_info.value)
+
+
+def test_groq_provider_default_model_alignment():
+    """
+    Verifies that GroqProvider defaults to settings.LLM_MODEL ('openai/gpt-oss-120b').
+    """
+    provider = GroqProvider(api_key="gsk_test")
+    assert provider.model == "openai/gpt-oss-120b"
