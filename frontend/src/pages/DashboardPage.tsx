@@ -171,7 +171,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate }) => {
             <div className="text-xs font-medium text-surface-800">AI Model & Grounding</div>
             <div className="text-sm font-semibold text-surface-900 mt-1.5 flex items-center gap-1.5">
               <CheckCircle2 className="w-4 h-4 text-emerald-600" />
-              <span>llama-3.3-70b</span>
+              <span>openai/gpt-oss-120b</span>
             </div>
             <div className="text-[11px] text-surface-800 mt-1">
               Grounded via PostgreSQL context

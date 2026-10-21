@@ -1,5 +1,11 @@
 import test from 'node:test';
 import assert from 'node:assert';
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 // Ensure mock Headers is available for Node test environment
 if (!global.Headers) {
@@ -193,4 +199,17 @@ test('Merchant profile validation: rejects empty business name and surfaces erro
 
   assert.strictEqual(validateProfileInput('Valid Business Name').valid, true);
   assert.strictEqual(validateProfileInput('Valid Business Name').error, null);
+});
+
+test('Dashboard displays configured AI model openai/gpt-oss-120b and no stale model', () => {
+  const fullPath = path.resolve(__dirname, '..', 'src/pages/DashboardPage.tsx');
+  const source = fs.readFileSync(fullPath, 'utf-8');
+  assert.ok(
+    source.includes('openai/gpt-oss-120b'),
+    'Dashboard must display openai/gpt-oss-120b'
+  );
+  assert.ok(
+    !source.includes('llama-3.3-70b'),
+    'Dashboard must not contain stale llama-3.3-70b model name'
+  );
 });

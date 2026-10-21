@@ -72,7 +72,7 @@ export const PrivacyPolicyPage: React.FC<LegalPageProps> = ({ onBack }) => {
             <span>2. AI Provider Processing & Grounded Knowledge</span>
           </h2>
           <p>
-            To generate context-grounded responses, the application transmits merchant prompts alongside active business context items to our configured LLM provider (Groq API hosting Meta Llama 3.3 70B models).
+            To generate context-grounded responses, the application transmits merchant prompts alongside active business context items to our configured LLM provider (Groq API hosting models such as openai/gpt-oss-120b and Meta Llama).
           </p>
           <p className="text-surface-800">
             Requests are processed ephemerally for response generation. The application does not use merchant proprietary context to train generalized public foundation models.

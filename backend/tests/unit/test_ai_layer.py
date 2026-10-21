@@ -17,6 +17,7 @@ from backend.app.ai.context_retriever import ContextRetriever
 from backend.app.models.merchant_profile import MerchantProfile
 from backend.app.models.context_item import ContextItem
 from backend.app.models.message import Message
+from backend.app.services.chat_service import ChatService
 
 
 def test_mock_llm_provider_behavior():
@@ -177,3 +178,53 @@ def test_groq_provider_default_model_alignment():
     """
     provider = GroqProvider(api_key="gsk_test")
     assert provider.model == "openai/gpt-oss-120b"
+
+
+def test_chat_service_draft_eligibility_classification():
+    """
+    Verifies conservative and deterministic draft eligibility for customer support turns.
+    """
+    valid_assistant_reply = "Dear customer, we apologize for the issue and will replace your item promptly."
+    error_fallback = "I apologize, but I could not generate a response. Please check your context items."
+
+    # Qualifying customer-support requests
+    assert ChatService._is_draft_eligible(
+        "A customer received a damaged product. What should we tell them?",
+        valid_assistant_reply,
+    ) is True
+    assert ChatService._is_draft_eligible(
+        "A customer's food was cold; write a message to them.",
+        valid_assistant_reply,
+    ) is True
+    assert ChatService._is_draft_eligible(
+        "A customer's order is late. Draft a reply using our policy.",
+        valid_assistant_reply,
+    ) is True
+
+    # Informational or non-drafting queries must NOT qualify
+    assert ChatService._is_draft_eligible(
+        "What are our delivery hours?",
+        valid_assistant_reply,
+    ) is False
+    assert ChatService._is_draft_eligible(
+        "A customer is asking for our return policy details.",
+        valid_assistant_reply,
+    ) is False
+    assert ChatService._is_draft_eligible(
+        "Our customer orders had typos so we had to rewrite them.",
+        valid_assistant_reply,
+    ) is False
+    assert ChatService._is_draft_eligible(
+        "Hello, how does the AI assistant work?",
+        valid_assistant_reply,
+    ) is False
+
+    # Short user content or error assistant content must NOT qualify
+    assert ChatService._is_draft_eligible(
+        "Hi",
+        valid_assistant_reply,
+    ) is False
+    assert ChatService._is_draft_eligible(
+        "A customer received a damaged product. What should we tell them?",
+        error_fallback,
+    ) is False
