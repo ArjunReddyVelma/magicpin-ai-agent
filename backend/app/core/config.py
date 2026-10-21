@@ -45,6 +45,12 @@ class Settings(BaseSettings):
     LLM_TIMEOUT_SECONDS: int = 30
     LLM_MAX_RETRIES: int = 2
 
+    # WhatsApp Cloud API configuration; supply real secrets only through environment variables.
+    WHATSAPP_VERIFY_TOKEN: str = ""
+    WHATSAPP_APP_SECRET: str = ""
+    WHATSAPP_ENCRYPTION_KEY: str = ""
+    WHATSAPP_GRAPH_API_VERSION: str = "v22.0"
+
     # Frontend & CORS
     FRONTEND_ORIGIN: str = "http://localhost:5173"
 

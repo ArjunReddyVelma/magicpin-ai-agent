@@ -158,3 +158,6 @@ export interface ActionListResponse {
   page_size: number;
 }
 
+
+export interface WhatsAppAccountStatus { connected: boolean; phone_number_id: string | null; business_account_id: string | null; created_at: string | null; }
+export interface WhatsAppInboxMessage { id: string; customer_wa_id: string; customer_name: string | null; inbound_text: string; suggested_reply: string; status: string; last_error: string | null; received_at: string; sent_at: string | null; }
