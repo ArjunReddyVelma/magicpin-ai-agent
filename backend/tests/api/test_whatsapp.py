@@ -2,6 +2,7 @@ import hashlib
 import hmac
 import json
 import uuid
+from datetime import datetime, timedelta, timezone
 import httpx
 import pytest
 from sqlalchemy.exc import IntegrityError
@@ -749,3 +750,198 @@ def test_whatsapp_validation_rejects_empty_reply_and_bad_account(client, monkeyp
         json={"reply_text": "    "},
     )
     assert r3.status_code == 422
+
+
+def test_whatsapp_stale_sending_recovered_to_send_ambiguous_in_list_messages(client, monkeypatch, db_session):
+    monkeypatch.setattr(settings, "WHATSAPP_ENCRYPTION_KEY", "u6N77xV0B1B6bKkCkJy3qQ8eM2fD4aX9tG7hP5rS1v8=")
+
+    reg = client.post(
+        "/v1/auth/register",
+        json={
+            "email": f"stale_list_{uuid.uuid4().hex[:8]}@example.com",
+            "password": "Password123!",
+            "full_name": "Stale List Merchant",
+            "business_name": "Stale List Store",
+            "category": "Retail",
+        },
+    )
+    assert reg.status_code == 201
+    csrf = reg.json()["csrf_token"]
+    merchant_id = uuid.UUID(reg.json()["merchant"]["id"])
+    phone_id = f"phone-stale-list-{uuid.uuid4().hex[:6]}"
+
+    client.put(
+        "/v1/whatsapp/account",
+        headers={"X-CSRF-Token": csrf},
+        json={"phone_number_id": phone_id, "access_token": "EAAX_valid_mock_token_at_least_20_chars"},
+    )
+
+    # Insert a message stuck in 'sending' older than 120s (e.g. 180s ago)
+    stale_time = datetime.now(timezone.utc) - timedelta(seconds=180)
+    msg = WhatsAppMessage(
+        merchant_id=merchant_id,
+        phone_number_id=phone_id,
+        provider_message_id=f"wamid.stale_list_{uuid.uuid4().hex[:8]}",
+        customer_wa_id="919876543211",
+        customer_name="Stuck Customer",
+        inbound_text="Help needed",
+        suggested_reply="Draft reply",
+        status="sending",
+    )
+    db_session.add(msg)
+    db_session.commit()
+
+    # Manually backdate updated_at to simulate process crash 3 minutes ago
+    msg.updated_at = stale_time
+    db_session.commit()
+
+    # Listing messages should recover the stuck message to send_ambiguous
+    inbox_resp = client.get("/v1/whatsapp/messages")
+    assert inbox_resp.status_code == 200
+    items = inbox_resp.json()["items"]
+    assert len(items) == 1
+    recovered = items[0]
+    assert recovered["id"] == str(msg.id)
+    assert recovered["status"] == "send_ambiguous"
+    assert "interrupted by a server restart or timeout" in recovered["last_error"]
+
+    # Verify persisted in database
+    db_session.expire_all()
+    reloaded = db_session.get(WhatsAppMessage, msg.id)
+    assert reloaded.status == "send_ambiguous"
+
+
+def test_whatsapp_stale_sending_recovered_in_send_reply_and_requires_force(client, monkeypatch, db_session):
+    monkeypatch.setattr(settings, "WHATSAPP_ENCRYPTION_KEY", "u6N77xV0B1B6bKkCkJy3qQ8eM2fD4aX9tG7hP5rS1v8=")
+
+    reg = client.post(
+        "/v1/auth/register",
+        json={
+            "email": f"stale_send_{uuid.uuid4().hex[:8]}@example.com",
+            "password": "Password123!",
+            "full_name": "Stale Send Merchant",
+            "business_name": "Stale Send Store",
+            "category": "Retail",
+        },
+    )
+    assert reg.status_code == 201
+    csrf = reg.json()["csrf_token"]
+    merchant_id = uuid.UUID(reg.json()["merchant"]["id"])
+    phone_id = f"phone-stale-send-{uuid.uuid4().hex[:6]}"
+
+    client.put(
+        "/v1/whatsapp/account",
+        headers={"X-CSRF-Token": csrf},
+        json={"phone_number_id": phone_id, "access_token": "EAAX_valid_mock_token_at_least_20_chars"},
+    )
+
+    # Insert message stuck in 'sending' older than 120s
+    stale_time = datetime.now(timezone.utc) - timedelta(seconds=200)
+    msg = WhatsAppMessage(
+        merchant_id=merchant_id,
+        phone_number_id=phone_id,
+        provider_message_id=f"wamid.stale_send_{uuid.uuid4().hex[:8]}",
+        customer_wa_id="919876543212",
+        customer_name="Retry Customer",
+        inbound_text="Need assistance",
+        suggested_reply="Ready to reply",
+        status="sending",
+    )
+    db_session.add(msg)
+    db_session.commit()
+
+    msg.updated_at = stale_time
+    db_session.commit()
+
+    # Sending without force=True must recover from 'sending' to 'send_ambiguous' and return 409 SEND_AMBIGUOUS
+    retry_no_force = client.post(
+        f"/v1/whatsapp/messages/{msg.id}/send",
+        headers={"X-CSRF-Token": csrf},
+        json={"reply_text": "Retrying after crash"},
+    )
+    assert retry_no_force.status_code == 409
+    assert retry_no_force.json()["error"]["code"] == "SEND_AMBIGUOUS"
+
+    db_session.expire_all()
+    reloaded = db_session.get(WhatsAppMessage, msg.id)
+    assert reloaded.status == "send_ambiguous"
+
+    # Retrying with force=True succeeds once Meta responds
+    def mock_meta_send(self, url, headers=None, json=None):
+        return httpx.Response(
+            status_code=200,
+            json={"messages": [{"id": "wamid.recovered_send_ok_456"}]},
+            request=httpx.Request("POST", url),
+        )
+    monkeypatch.setattr(httpx.Client, "post", mock_meta_send)
+
+    retry_with_force = client.post(
+        f"/v1/whatsapp/messages/{msg.id}/send",
+        headers={"X-CSRF-Token": csrf},
+        json={"reply_text": "Retrying with explicit confirmation", "force": True},
+    )
+    assert retry_with_force.status_code == 200
+    assert retry_with_force.json()["status"] == "sent"
+
+    db_session.expire_all()
+    final_msg = db_session.get(WhatsAppMessage, msg.id)
+    assert final_msg.status == "sent"
+    assert final_msg.sent_provider_message_id == "wamid.recovered_send_ok_456"
+
+
+def test_whatsapp_active_sending_not_recovered_as_stale(client, monkeypatch, db_session):
+    monkeypatch.setattr(settings, "WHATSAPP_ENCRYPTION_KEY", "u6N77xV0B1B6bKkCkJy3qQ8eM2fD4aX9tG7hP5rS1v8=")
+
+    reg = client.post(
+        "/v1/auth/register",
+        json={
+            "email": f"active_send_{uuid.uuid4().hex[:8]}@example.com",
+            "password": "Password123!",
+            "full_name": "Active Send Merchant",
+            "business_name": "Active Send Store",
+            "category": "Retail",
+        },
+    )
+    assert reg.status_code == 201
+    csrf = reg.json()["csrf_token"]
+    merchant_id = uuid.UUID(reg.json()["merchant"]["id"])
+    phone_id = f"phone-active-send-{uuid.uuid4().hex[:6]}"
+
+    client.put(
+        "/v1/whatsapp/account",
+        headers={"X-CSRF-Token": csrf},
+        json={"phone_number_id": phone_id, "access_token": "EAAX_valid_mock_token_at_least_20_chars"},
+    )
+
+    # Insert a message actively sending (only 10 seconds ago)
+    recent_time = datetime.now(timezone.utc) - timedelta(seconds=10)
+    msg = WhatsAppMessage(
+        merchant_id=merchant_id,
+        phone_number_id=phone_id,
+        provider_message_id=f"wamid.active_send_{uuid.uuid4().hex[:8]}",
+        customer_wa_id="919876543213",
+        customer_name="Active Customer",
+        inbound_text="Still sending",
+        suggested_reply="Please wait",
+        status="sending",
+    )
+    db_session.add(msg)
+    db_session.commit()
+
+    msg.updated_at = recent_time
+    db_session.commit()
+
+    # Sending should still return 409 SEND_IN_PROGRESS (active concurrency lock)
+    send_resp = client.post(
+        f"/v1/whatsapp/messages/{msg.id}/send",
+        headers={"X-CSRF-Token": csrf},
+        json={"reply_text": "Concurrent attempt"},
+    )
+    assert send_resp.status_code == 409
+    assert send_resp.json()["error"]["code"] == "SEND_IN_PROGRESS"
+
+    # Inbox listing should still report 'sending'
+    inbox_resp = client.get("/v1/whatsapp/messages")
+    assert inbox_resp.status_code == 200
+    items = inbox_resp.json()["items"]
+    assert items[0]["status"] == "sending"

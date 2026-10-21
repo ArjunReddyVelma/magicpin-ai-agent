@@ -2,7 +2,7 @@ import hashlib
 import hmac
 import json
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 import httpx
 from cryptography.fernet import Fernet, InvalidToken
@@ -19,6 +19,31 @@ from backend.app.models.whatsapp import WhatsAppAccount, WhatsAppMessage
 from backend.app.ai.context_retriever import ContextRetriever
 
 router = APIRouter(prefix="/whatsapp", tags=["WhatsApp Business"])
+
+STALE_SENDING_TIMEOUT_SECONDS = 120
+STALE_SENDING_ERROR_MESSAGE = (
+    "Previous send was interrupted by a server restart or timeout; "
+    "delivery is unconfirmed. Check customer chat before retrying."
+)
+
+
+def _recover_stale_sending_message(message: WhatsAppMessage, now: datetime) -> bool:
+    """If a message has been in 'sending' status longer than STALE_SENDING_TIMEOUT_SECONDS,
+    recover it safely to 'send_ambiguous' to avoid indefinite lockouts without risking duplicate sends.
+    Returns True if recovered.
+    """
+    if message.status != "sending":
+        return False
+    updated_at = message.updated_at
+    if updated_at is None:
+        return False
+    if updated_at.tzinfo is None:
+        updated_at = updated_at.replace(tzinfo=timezone.utc)
+    if (now - updated_at).total_seconds() > STALE_SENDING_TIMEOUT_SECONDS:
+        message.status = "send_ambiguous"
+        message.last_error = STALE_SENDING_ERROR_MESSAGE
+        return True
+    return False
 
 
 def _cipher() -> Fernet:
@@ -141,6 +166,21 @@ def list_messages(
     page: int = Query(1, ge=1),
     page_size: int = Query(50, ge=1, le=100),
 ):
+    now = datetime.now(timezone.utc)
+    cutoff = now - timedelta(seconds=STALE_SENDING_TIMEOUT_SECONDS)
+    stale_items = db.scalars(
+        select(WhatsAppMessage).where(
+            WhatsAppMessage.merchant_id == merchant.id,
+            WhatsAppMessage.status == "sending",
+            WhatsAppMessage.updated_at < cutoff,
+        )
+    ).all()
+    if stale_items:
+        for m in stale_items:
+            m.status = "send_ambiguous"
+            m.last_error = STALE_SENDING_ERROR_MESSAGE
+        db.commit()
+
     stmt = (
         select(WhatsAppMessage)
         .where(WhatsAppMessage.merchant_id == merchant.id)
@@ -186,6 +226,10 @@ def send_reply(
             status_code=404,
             detail={"error": {"code": "WHATSAPP_MESSAGE_NOT_FOUND", "message": "WhatsApp message not found."}},
         )
+
+    now = datetime.now(timezone.utc)
+    if _recover_stale_sending_message(message, now):
+        db.commit()
 
     if message.status == "sent":
         raise HTTPException(
