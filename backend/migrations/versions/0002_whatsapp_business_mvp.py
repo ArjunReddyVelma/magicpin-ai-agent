@@ -17,8 +17,6 @@ def upgrade() -> None:
         sa.Column("access_token_encrypted", sa.Text(), nullable=False),
         sa.Column("created_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.text("now()")),
         sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.text("now()")))
-    op.create_index("ix_whatsapp_accounts_merchant_id", "whatsapp_accounts", ["merchant_id"], unique=True)
-    op.create_index("ix_whatsapp_accounts_phone_number_id", "whatsapp_accounts", ["phone_number_id"], unique=True)
     op.create_table("whatsapp_messages",
         sa.Column("id", postgresql.UUID(as_uuid=True), primary_key=True),
         sa.Column("merchant_id", postgresql.UUID(as_uuid=True), sa.ForeignKey("merchant_profiles.id", ondelete="CASCADE"), nullable=False),
@@ -35,7 +33,6 @@ def upgrade() -> None:
         sa.Column("sent_at", sa.DateTime(timezone=True), nullable=True),
         sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.text("now()")))
     op.create_index("ix_whatsapp_messages_merchant_id", "whatsapp_messages", ["merchant_id"])
-    op.create_index("ix_whatsapp_messages_provider_message_id", "whatsapp_messages", ["provider_message_id"], unique=True)
     op.create_index("ix_whatsapp_messages_customer_wa_id", "whatsapp_messages", ["customer_wa_id"])
     op.create_index("ix_whatsapp_messages_merchant_received", "whatsapp_messages", ["merchant_id", "received_at"])
 

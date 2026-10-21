@@ -9,8 +9,8 @@ from backend.app.db.base import Base
 class WhatsAppAccount(Base):
     __tablename__ = "whatsapp_accounts"
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    merchant_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("merchant_profiles.id", ondelete="CASCADE"), nullable=False, unique=True, index=True)
-    phone_number_id: Mapped[str] = mapped_column(String(80), nullable=False, unique=True, index=True)
+    merchant_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("merchant_profiles.id", ondelete="CASCADE"), nullable=False, unique=True)
+    phone_number_id: Mapped[str] = mapped_column(String(80), nullable=False, unique=True)
     business_account_id: Mapped[Optional[str]] = mapped_column(String(80), nullable=True)
     access_token_encrypted: Mapped[str] = mapped_column(Text, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
