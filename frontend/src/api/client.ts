@@ -359,7 +359,7 @@ export class ApiClient {
   public async getWhatsAppAccount(): Promise<WhatsAppAccountStatus> { return this.request<WhatsAppAccountStatus>('/whatsapp/account'); }
   public async saveWhatsAppAccount(payload: { phone_number_id: string; business_account_id?: string; access_token: string }): Promise<WhatsAppAccountStatus> { return this.request<WhatsAppAccountStatus>('/whatsapp/account', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) }); }
   public async listWhatsAppMessages(): Promise<{ items: WhatsAppInboxMessage[] }> { return this.request<{ items: WhatsAppInboxMessage[] }>('/whatsapp/messages'); }
-  public async sendWhatsAppReply(id: string, reply_text: string): Promise<{ id: string; status: string; sent_at: string }> { return this.request<{ id: string; status: string; sent_at: string }>(`/whatsapp/messages/${id}/send`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ reply_text }) }); }
+  public async sendWhatsAppReply(id: string, reply_text: string, force?: boolean): Promise<{ id: string; status: string; sent_at: string }> { return this.request<{ id: string; status: string; sent_at: string }>(`/whatsapp/messages/${id}/send`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ reply_text, force: Boolean(force) }) }); }
 
   // Suggested Actions
   public async listActions(params?: {
