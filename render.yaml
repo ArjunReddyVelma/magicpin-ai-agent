@@ -56,6 +56,14 @@ services:
         value: "5"
       - key: RATE_LIMIT_LOGIN_WINDOW_SECONDS
         value: "900"
+      - key: WHATSAPP_VERIFY_TOKEN
+        sync: false
+      - key: WHATSAPP_APP_SECRET
+        sync: false
+      - key: WHATSAPP_ENCRYPTION_KEY
+        sync: false
+      - key: WHATSAPP_GRAPH_API_VERSION
+        value: v22.0
 
   # Frontend Static Application
   - type: web
