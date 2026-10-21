@@ -63,6 +63,7 @@ def test_cross_merchant_context_isolation(client: TestClient):
     assert r_b_list.json()["total"] == 0
 
     # 3. Confirm Merchant A's data was completely untouched
+    client.cookies.clear()
     client.cookies.set(settings.COOKIE_NAME, cookie_a)
     r_a_verify = client.get(f"/v1/context/{item_id_a}")
     assert r_a_verify.status_code == 200
