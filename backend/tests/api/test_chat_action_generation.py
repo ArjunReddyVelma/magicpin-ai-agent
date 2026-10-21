@@ -83,6 +83,62 @@ def test_eligible_customer_support_turn_creates_suggested_action(chat_action_cli
     assert action["payload"]["conversation_id"] == conv_id
 
 
+def test_damaged_product_support_request_creates_reply_draft(chat_action_client):
+    client, mock_provider = chat_action_client
+    auth = _register_merchant(client, "Damaged Product Merchant")
+    headers = {"X-CSRF-Token": auth["csrf_token"]}
+
+    conv_resp = client.post("/v1/conversations", headers=headers, json={"title": "Damaged Product Issue"})
+    assert conv_resp.status_code == 201
+    conv_id = conv_resp.json()["id"]
+
+    chat_resp = client.post(
+        f"/v1/conversations/{conv_id}/messages",
+        headers=headers,
+        json={"content": "A customer received a damaged product. What should we tell them?"},
+    )
+    assert chat_resp.status_code == 200
+
+    actions_resp = client.get("/v1/actions?status=pending", headers=headers)
+    assert actions_resp.status_code == 200
+    data = actions_resp.json()
+    assert data["total"] == 1
+    assert len(data["items"]) == 1
+    action = data["items"][0]
+    assert action["action_type"] == "reply_draft"
+    assert action["status"] == "pending"
+    assert action["merchant_id"] == auth["merchant_id"]
+    assert action["conversation_id"] == conv_id
+
+
+def test_cold_food_colloquial_request_creates_reply_draft(chat_action_client):
+    client, mock_provider = chat_action_client
+    auth = _register_merchant(client, "Cold Food Merchant")
+    headers = {"X-CSRF-Token": auth["csrf_token"]}
+
+    conv_resp = client.post("/v1/conversations", headers=headers, json={"title": "Cold Food Complaint"})
+    assert conv_resp.status_code == 201
+    conv_id = conv_resp.json()["id"]
+
+    chat_resp = client.post(
+        f"/v1/conversations/{conv_id}/messages",
+        headers=headers,
+        json={"content": "A customer's food was cold; write a message to them."},
+    )
+    assert chat_resp.status_code == 200
+
+    actions_resp = client.get("/v1/actions?status=pending", headers=headers)
+    assert actions_resp.status_code == 200
+    data = actions_resp.json()
+    assert data["total"] == 1
+    assert len(data["items"]) == 1
+    action = data["items"][0]
+    assert action["action_type"] == "reply_draft"
+    assert action["status"] == "pending"
+    assert action["merchant_id"] == auth["merchant_id"]
+    assert action["conversation_id"] == conv_id
+
+
 def test_non_actionable_message_does_not_create_action(chat_action_client):
     client, mock_provider = chat_action_client
     auth = _register_merchant(client, "General Merchant")
@@ -91,10 +147,11 @@ def test_non_actionable_message_does_not_create_action(chat_action_client):
     conv_resp = client.post("/v1/conversations", headers=headers, json={"title": "General Q&A"})
     conv_id = conv_resp.json()["id"]
 
-    # Send general greeting / non-actionable questions
+    # Send general greeting / non-actionable questions, including informational queries
     queries = [
         "Hello! How are you doing today?",
         "What are my store operating hours?",
+        "What are our delivery hours?",
         "Explain how the dashboard works.",
     ]
     for q in queries:
@@ -106,7 +163,7 @@ def test_non_actionable_message_does_not_create_action(chat_action_client):
         assert resp.status_code == 200
 
     # Review queue should remain completely empty (0 items)
-    actions_resp = client.get("/v1/actions")
+    actions_resp = client.get("/v1/actions", headers=headers)
     assert actions_resp.status_code == 200
     assert actions_resp.json()["total"] == 0
     assert len(actions_resp.json()["items"]) == 0

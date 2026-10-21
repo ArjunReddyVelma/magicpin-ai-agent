@@ -77,9 +77,29 @@ class ChatService:
             "how to respond",
             "how should i reply",
             "how should i respond",
+            "how should we reply",
+            "how should we respond",
             "what should i reply",
             "what should i say",
             "what should i tell",
+            "what should we reply",
+            "what should we say",
+            "what should we tell",
+            "what to tell",
+            "what to say",
+            "what to reply",
+            "write a message",
+            "write a reply",
+            "write a response",
+            "write an apology",
+            "write to them",
+            "write them a message",
+            "write them a reply",
+            "write them a response",
+            "write them an apology",
+            "compose a message",
+            "compose a reply",
+            "compose a response",
         )
         has_draft_intent = any(verb in user_lower for verb in draft_verbs)
 
@@ -97,6 +117,7 @@ class ChatService:
             "cancellation",
             "buyer",
             "guest",
+            "damaged",
         )
         has_customer_context = any(ind in user_lower for ind in customer_indicators)
 
