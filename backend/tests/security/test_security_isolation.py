@@ -47,6 +47,7 @@ def test_cross_merchant_session_isolation(client: TestClient):
     assert r_b_prof.json()["business_name"] == "Merchant Business B"
 
     # 4. Switch back to Merchant A's cookie
+    client.cookies.clear()
     client.cookies.set(settings.COOKIE_NAME, cookie_a)
     r_a_prof = client.get("/v1/merchant/profile")
     assert r_a_prof.status_code == 200
@@ -68,6 +69,7 @@ def test_cross_merchant_session_isolation(client: TestClient):
     assert r_spoof.json()["business_name"] == "Merchant A Tampered Name"
 
     # Confirm Merchant B's profile was NOT altered
+    client.cookies.clear()
     client.cookies.set(settings.COOKIE_NAME, cookie_b)
     r_b_verify = client.get("/v1/merchant/profile")
     assert r_b_verify.json()["business_name"] == "Merchant Business B"

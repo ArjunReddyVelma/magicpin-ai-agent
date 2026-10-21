@@ -204,6 +204,7 @@ def test_session_rotation_on_refresh(client: TestClient):
     assert r_me.status_code == 200
 
     # Old cookie is revoked in DB and rejected
+    client.cookies.clear()
     client.cookies.set(settings.COOKIE_NAME, old_cookie)
     r_old = client.get("/v1/auth/me")
     assert r_old.status_code == 401

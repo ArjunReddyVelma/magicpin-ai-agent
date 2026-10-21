@@ -105,8 +105,25 @@ class GroqProvider(LLMProvider):
                         retryable=True,
                     )
                 else:
+                    error_detail = ""
+                    try:
+                        err_json = response.json()
+                        if isinstance(err_json, dict) and "error" in err_json:
+                            err_info = err_json["error"]
+                            if isinstance(err_info, dict):
+                                error_detail = err_info.get("message") or str(err_info)
+                            else:
+                                error_detail = str(err_info)
+                    except Exception:
+                        error_detail = response.text[:200] if response.text else ""
+
+                    msg = (
+                        f"Groq API call failed: HTTP {response.status_code} - {error_detail}"
+                        if error_detail
+                        else f"Groq API call failed: HTTP {response.status_code}"
+                    )
                     raise LLMProviderError(
-                        f"Groq API call failed: HTTP {response.status_code}",
+                        msg,
                         status_code=502,
                         retryable=False,
                     )
