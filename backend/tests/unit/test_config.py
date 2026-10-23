@@ -131,3 +131,19 @@ def test_alembic_normalize_db_url():
     assert normalize_database_url("postgres://user:pass@host:5432/db") == "postgresql+psycopg://user:pass@host:5432/db"
     assert normalize_database_url("postgresql://user:pass@host:5432/db") == "postgresql+psycopg://user:pass@host:5432/db"
     assert normalize_database_url("postgresql+psycopg://user:pass@host:5432/db") == "postgresql+psycopg://user:pass@host:5432/db"
+
+
+def test_whatsapp_mode_default_and_allowed_values():
+    default_cfg = Settings()
+    assert default_cfg.WHATSAPP_MODE == "live"
+
+    mock_cfg = Settings(WHATSAPP_MODE="mock")
+    assert mock_cfg.WHATSAPP_MODE == "mock"
+
+    case_cfg = Settings(WHATSAPP_MODE="MOCK")
+    assert case_cfg.WHATSAPP_MODE == "mock"
+
+
+def test_whatsapp_mode_rejects_invalid_values():
+    with pytest.raises(ValueError, match="WHATSAPP_MODE must be either 'live' or 'mock'"):
+        Settings(WHATSAPP_MODE="sandbox")

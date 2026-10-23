@@ -6,7 +6,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Optional
 import httpx
 from cryptography.fernet import Fernet, InvalidToken
-from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
 from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
@@ -104,12 +104,41 @@ class SendReply(BaseModel):
         return s
 
 
+class SimulateInboundMessage(BaseModel):
+    customer_wa_id: str = Field(min_length=1, max_length=80)
+    customer_name: Optional[str] = Field(default=None, max_length=160)
+    message_text: str = Field(min_length=1, max_length=4096)
+
+    @field_validator("customer_wa_id")
+    @classmethod
+    def validate_wa_id(cls, v: str) -> str:
+        s = v.strip()
+        if not s:
+            raise ValueError("Customer WhatsApp ID cannot be empty.")
+        return s
+
+    @field_validator("message_text")
+    @classmethod
+    def validate_text(cls, v: str) -> str:
+        s = v.strip()
+        if not s:
+            raise ValueError("Message text cannot be empty or whitespace only.")
+        return s
+
+
+class SimulateStatusUpdate(BaseModel):
+    status: str = Field(pattern="^(send_failed|send_ambiguous)$")
+    last_error: Optional[str] = Field(default=None, max_length=500)
+
+
+
 def _account_status(account: Optional[WhatsAppAccount]) -> dict:
     return {
         "connected": bool(account),
         "phone_number_id": account.phone_number_id if account else None,
         "business_account_id": account.business_account_id if account else None,
         "created_at": account.created_at.isoformat() if account else None,
+        "mode": settings.WHATSAPP_MODE,
     }
 
 
@@ -252,6 +281,26 @@ def send_reply(
                     "message": "Previous send timed out and outcome is unconfirmed. Check customer chat before confirming retry.",
                 }
             },
+        )
+
+    # In mock mode, guard before account lookup, token decryption, URL construction, and outbound HTTP
+    if settings.WHATSAPP_MODE == "mock":
+        message.status = "sending"
+        db.commit()
+
+        mock_sent_id = f"wamid.mock_{uuid.uuid4().hex}"
+        msg = db.scalar(select(WhatsAppMessage).where(WhatsAppMessage.id == message_id))
+        if msg:
+            msg.status = "sent"
+            msg.suggested_reply = req.reply_text
+            msg.sent_provider_message_id = mock_sent_id
+            msg.sent_at = datetime.now(timezone.utc)
+            msg.last_error = None
+            db.commit()
+            return {"id": str(msg.id), "status": msg.status, "sent_at": msg.sent_at.isoformat()}
+        raise HTTPException(
+            status_code=500,
+            detail={"error": {"code": "DATABASE_ERROR", "message": "Message state update failed."}},
         )
 
     account = db.scalar(
@@ -397,6 +446,39 @@ def verify_webhook(
     raise HTTPException(status_code=403, detail="Webhook verification failed")
 
 
+def _generate_ai_draft(merchant_id: uuid.UUID, body: str, db: Session) -> str:
+    """Grounded AI draft generation proposal.
+    Human-in-the-loop guarantee: strictly proposes a draft; never automatically sends.
+    """
+    fallback = "Thank you for contacting us. Could you please share a little more detail so we can help?"
+    try:
+        context = ContextRetriever().retrieve_relevant_context(merchant_id=merchant_id, query=body, db=db)
+        context_blocks = [f"- {item.title}: {item.content}" for item in context]
+        context_text = "\n".join(context_blocks)
+        merchant_profile = db.get(MerchantProfile, merchant_id)
+        biz_name = merchant_profile.business_name if merchant_profile else "the store"
+
+        prompt = (
+            f"You are drafting a reviewable WhatsApp customer support reply for {biz_name}.\n"
+            "OPERATING RULES:\n"
+            "1. This is a draft proposal for the merchant to review and edit. You cannot and will not send any message.\n"
+            "2. Ground your reply strictly in the provided merchant context.\n"
+            "3. Never invent prices, availability, delivery timelines, policies, or promises not in the context.\n"
+            "4. If context does not have the answer, politely ask a clarifying question or advise contacting the store.\n"
+            "5. Keep the reply concise (1-3 sentences) and courteous.\n\n"
+            f"<merchant_context>\n{context_text or '(No relevant merchant context configured)'}\n</merchant_context>"
+        )
+        draft = get_llm_provider().generate_response(
+            prompt,
+            [{"role": "user", "content": body}],
+            max_tokens=240,
+            temperature=0.3,
+        ).content.strip()[:4096]
+        return draft or fallback
+    except Exception:
+        return fallback
+
+
 @router.post("/webhook")
 async def receive_webhook(request: Request, db: Session = Depends(get_db)):
     raw = await request.body()
@@ -448,37 +530,112 @@ async def receive_webhook(request: Request, db: Session = Depends(get_db)):
                     continue
 
                 # Grounded AI Draft Generation
-                try:
-                    context = ContextRetriever().retrieve_relevant_context(merchant_id=account.merchant_id, query=body, db=db)
-                    context_blocks = [f"- {item.title}: {item.content}" for item in context]
-                    context_text = "\n".join(context_blocks)
-                    merchant_profile = db.get(MerchantProfile, account.merchant_id)
-                    biz_name = merchant_profile.business_name if merchant_profile else "the store"
-
-                    prompt = (
-                        f"You are drafting a reviewable WhatsApp customer support reply for {biz_name}.\n"
-                        "OPERATING RULES:\n"
-                        "1. This is a draft proposal for the merchant to review and edit. You cannot and will not send any message.\n"
-                        "2. Ground your reply strictly in the provided merchant context.\n"
-                        "3. Never invent prices, availability, delivery timelines, policies, or promises not in the context.\n"
-                        "4. If context does not have the answer, politely ask a clarifying question or advise contacting the store.\n"
-                        "5. Keep the reply concise (1-3 sentences) and courteous.\n\n"
-                        f"<merchant_context>\n{context_text or '(No relevant merchant context configured)'}\n</merchant_context>"
-                    )
-                    draft = get_llm_provider().generate_response(
-                        prompt,
-                        [{"role": "user", "content": body}],
-                        max_tokens=240,
-                        temperature=0.3,
-                    ).content.strip()[:4096]
-
-                    msg.suggested_reply = draft or "Thank you for contacting us. Could you please share a little more detail so we can help?"
-                    db.commit()
-                except Exception:
-                    db.rollback()
-                    msg = db.scalar(select(WhatsAppMessage).where(WhatsAppMessage.provider_message_id == provider_id))
-                    if msg:
-                        msg.suggested_reply = "Thank you for contacting us. Could you please share a little more detail so we can help?"
-                        db.commit()
+                msg.suggested_reply = _generate_ai_draft(account.merchant_id, body, db)
+                db.commit()
 
     return {"status": "ok"}
+
+
+@router.post("/mock/simulate-inbound", status_code=status.HTTP_201_CREATED)
+def simulate_inbound_message(
+    req: SimulateInboundMessage,
+    merchant: MerchantProfile = Depends(get_current_merchant),
+    _: None = Depends(verify_csrf),
+    db: Session = Depends(get_db),
+):
+    if settings.WHATSAPP_MODE != "mock":
+        raise HTTPException(
+            status_code=404,
+            detail={"error": {"code": "MOCK_MODE_DISABLED", "message": "Mock WhatsApp endpoints are only available when WHATSAPP_MODE is 'mock'."}},
+        )
+
+    account = db.scalar(select(WhatsAppAccount).where(WhatsAppAccount.merchant_id == merchant.id))
+    if not account:
+        raise HTTPException(
+            status_code=409,
+            detail={"error": {"code": "WHATSAPP_ACCOUNT_MISSING", "message": "Connect a WhatsApp account before simulating messages."}},
+        )
+
+    provider_id = f"wamid.sim_{uuid.uuid4().hex}"
+    msg = WhatsAppMessage(
+        merchant_id=merchant.id,
+        phone_number_id=account.phone_number_id,
+        provider_message_id=provider_id,
+        customer_wa_id=req.customer_wa_id,
+        customer_name=req.customer_name.strip() if req.customer_name else None,
+        inbound_text=req.message_text,
+        suggested_reply="",
+        status="needs_review",
+    )
+    db.add(msg)
+    db.commit()
+
+    # Generate grounded AI draft proposal
+    draft = _generate_ai_draft(merchant.id, req.message_text, db)
+    msg.suggested_reply = draft
+    db.commit()
+    db.refresh(msg)
+
+    return {
+        "id": str(msg.id),
+        "customer_wa_id": msg.customer_wa_id,
+        "customer_name": msg.customer_name,
+        "inbound_text": msg.inbound_text,
+        "suggested_reply": msg.suggested_reply,
+        "status": msg.status,
+        "provider_message_id": msg.provider_message_id,
+        "received_at": msg.received_at.isoformat(),
+    }
+
+
+
+@router.post("/mock/messages/{message_id}/status")
+def simulate_message_status(
+    message_id: uuid.UUID,
+    req: SimulateStatusUpdate,
+    merchant: MerchantProfile = Depends(get_current_merchant),
+    _: None = Depends(verify_csrf),
+    db: Session = Depends(get_db),
+):
+    if settings.WHATSAPP_MODE != "mock":
+        raise HTTPException(
+            status_code=404,
+            detail={"error": {"code": "MOCK_MODE_DISABLED", "message": "Mock WhatsApp endpoints are only available when WHATSAPP_MODE is 'mock'."}},
+        )
+
+    msg = db.scalar(
+        select(WhatsAppMessage)
+        .where(
+            WhatsAppMessage.id == message_id,
+            WhatsAppMessage.merchant_id == merchant.id,
+        )
+        .with_for_update()
+    )
+    if not msg:
+        raise HTTPException(
+            status_code=404,
+            detail={"error": {"code": "WHATSAPP_MESSAGE_NOT_FOUND", "message": "WhatsApp message not found."}},
+        )
+
+    if msg.status == "needs_review":
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "error": {
+                    "code": "INVALID_MESSAGE_STATE",
+                    "message": "Cannot simulate delivery status on an unapproved message in 'needs_review' state. Explicit merchant approval via send is required first.",
+                }
+            },
+        )
+
+    msg.status = req.status
+    msg.last_error = req.last_error
+    db.commit()
+    db.refresh(msg)
+
+    return {
+        "id": str(msg.id),
+        "status": msg.status,
+        "last_error": msg.last_error,
+        "sent_at": msg.sent_at.isoformat() if msg.sent_at else None,
+    }
