@@ -6,9 +6,29 @@
 ![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16-336791?style=for-the-badge&logo=postgresql)
 ![License](https://img.shields.io/badge/License-MIT-yellow?style=for-the-badge)
 
-A standalone **Merchant Support Copilot and Knowledge Management Workspace** built with **FastAPI**, **PostgreSQL**, and **React (TypeScript + Tailwind CSS)**. 
+A standalone **Merchant Support Copilot and Knowledge Management Workspace** built with **FastAPI**, **PostgreSQL**, and **React (TypeScript + Tailwind CSS)**.
 
 The application enables merchants to maintain their business context and operating policies, conduct AI-assisted support conversations grounded in their active knowledge base, and safely review AI-generated customer reply drafts through an audited **Human-in-the-Loop** review queue.
+
+## Live deployment
+
+**Open the deployed application:** [https://magicpin-frontend.onrender.com](https://magicpin-frontend.onrender.com)
+
+| Link | URL | What it is |
+|---|---|---|
+| **Magicpin web app** | [magicpin-frontend.onrender.com](https://magicpin-frontend.onrender.com) | Deployed merchant dashboard |
+| Backend API | [magicpin-backend.onrender.com](https://magicpin-backend.onrender.com) | FastAPI backend service |
+| Backend readiness | [Check service readiness](https://magicpin-backend.onrender.com/v1/readyz) | Database/service health response |
+| Swagger API docs | [API documentation](https://magicpin-backend.onrender.com/docs) | Interactive API reference, when enabled |
+| ReDoc | [Alternative API documentation](https://magicpin-backend.onrender.com/redoc) | Alternative API reference, when enabled |
+| Source repository | [GitHub repository](https://github.com/ArjunReddyVelma/magicpin-ai-agent) | Source code and development history |
+
+### Deployment and feature status
+
+- The deployed application is configured on Render with a React frontend, FastAPI backend, and PostgreSQL database.
+- The WhatsApp integration MVP is part of the `feature/frontend-core` development line. It includes webhook validation, merchant account mapping, inbox/draft/send workflows, and delivery/error tracking; completing real Meta messaging still depends on valid Meta account status, webhook subscription/configuration, and merchant credentials.
+- **WhatsApp Mock Mode is not part of this deployment.** It remains on the separate `feature/whatsapp-mock-mode` branch for local development and testing only.
+- The Render blueprint currently describes a free PostgreSQL database. Free Render databases are temporary and should not be used for durable production/customer data.
 
 ---
 
