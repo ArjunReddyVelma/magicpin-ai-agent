@@ -6,9 +6,33 @@
 ![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16-336791?style=for-the-badge&logo=postgresql)
 ![License](https://img.shields.io/badge/License-MIT-yellow?style=for-the-badge)
 
-A standalone **Merchant Support Copilot and Knowledge Management Workspace** built with **FastAPI**, **PostgreSQL**, and **React (TypeScript + Tailwind CSS)**. 
+A standalone **Merchant Support Copilot and Knowledge Management Workspace** built with **FastAPI**, **PostgreSQL**, and **React (TypeScript + Tailwind CSS)**.
 
 The application enables merchants to maintain their business context and operating policies, conduct AI-assisted support conversations grounded in their active knowledge base, and safely review AI-generated customer reply drafts through an audited **Human-in-the-Loop** review queue.
+
+## Current development and deployment status
+
+- **Current feature branch:** [`feature/whatsapp-mock-mode`](https://github.com/ArjunReddyVelma/magicpin-ai-agent/tree/feature/whatsapp-mock-mode)
+- **Latest WhatsApp Mock Mode commit:** [`71ecd68`](https://github.com/ArjunReddyVelma/magicpin-ai-agent/commit/71ecd686212669a7d734d4c77cb945faef15bab0)
+- **CI:** [CI Quality Gate run](https://github.com/ArjunReddyVelma/magicpin-ai-agent/actions/runs/39904782653) — passed for the feature commit.
+- **Deployment boundary:** WhatsApp Mock Mode is published on this feature branch for development and review only. It has **not** been merged into the live website branch and must not be treated as deployed.
+- **Mock-mode safety:** Set `WHATSAPP_MODE=mock` only in a local development environment. Keep the live deployment in `live` mode; mock endpoints are intentionally unavailable in live mode.
+
+### Deployed application links
+
+These are the Render URLs configured/used for the deployed application. Confirm the frontend hostname in the Render dashboard if Render assigned a suffixed hostname.
+
+| Service | URL | Purpose |
+|---|---|---|
+| Frontend web app | [https://magicpin-frontend.onrender.com](https://magicpin-frontend.onrender.com) | Live merchant dashboard (deployed version; does not include the unmerged mock-mode feature) |
+| Backend API | [https://magicpin-backend.onrender.com](https://magicpin-backend.onrender.com) | Live FastAPI service |
+| Backend readiness | [https://magicpin-backend.onrender.com/v1/readyz](https://magicpin-backend.onrender.com/v1/readyz) | Health/readiness check; expected JSON includes database status |
+| Swagger API docs | [https://magicpin-backend.onrender.com/docs](https://magicpin-backend.onrender.com/docs) | Interactive API documentation, if enabled by the deployed configuration |
+| ReDoc | [https://magicpin-backend.onrender.com/redoc](https://magicpin-backend.onrender.com/redoc) | Alternative API documentation, if enabled by the deployed configuration |
+| GitHub feature branch | [feature/whatsapp-mock-mode](https://github.com/ArjunReddyVelma/magicpin-ai-agent/tree/feature/whatsapp-mock-mode) | Review source changes without merging or deploying |
+| CI verification | [GitHub Actions run](https://github.com/ArjunReddyVelma/magicpin-ai-agent/actions/runs/39904782653) | Automated backend/frontend quality checks |
+
+> **Important:** the live site and its backend remain on their existing deployment version. Pushing this feature branch does not merge it into production. Do not enable mock mode in Render or send real WhatsApp messages while testing this feature.
 
 ---
 
@@ -75,17 +99,17 @@ Generic AI chatbots often fail in this domain because they hallucinate store pol
 
 | Feature Area | Status | Verification & Evidence |
 |---|---|---|
-| **PostgreSQL Persistence & Migrations** | Implemented | 7 database tables, Alembic migration history |
-| **Authentication & Session Security** | Implemented | 10 security tests passing; Argon2id + CSRF verified |
+| **PostgreSQL Persistence & Migrations** | Implemented | SQLAlchemy models, Alembic migration history, migration tests |
+| **Authentication & Session Security** | Implemented | Argon2id password hashing, session cookies, CSRF validation, tenant isolation tests |
 | **Merchant Context Management** | Implemented | CRUD API + ETag optimistic locking verified |
 | **Chat & Context Grounding** | Implemented | Prompt grounding, Groq provider, response validator |
 | **Failed-Turn Recovery & Idempotency** | Implemented | HTTP 502 recovery, retry message ID, idempotency keys |
 | **Chat-to-Action Generation** | Implemented | 7 integration tests passing; atomic row-locked transactions |
 | **Suggested Actions Review Queue** | Implemented | Paginated queue, state machine, zero side-effects verified |
-| **Frontend Single-Page Application** | Implemented | 42 unit & integration tests passing; clean production build |
-| **Full-Stack Integration Audit** | Implemented | 77 backend tests passing; 42 frontend tests passing |
+| **Frontend Single-Page Application** | Implemented | 55 frontend tests reported passing; lint and production build passed on the mock-mode feature branch |
+| **Full-Stack Integration Audit** | Implemented | 126 backend tests passed, 1 skipped; 55 frontend tests passed on the mock-mode feature branch |
 | **Legal Pages (Privacy & Terms)** | Draft Implemented | Reachable in UI; operational disclosures with pending-review notices |
-| **Live Production Deployment** | Ready (Not Deployed)| Render blueprint configured (`render.yaml`); pending hosting provisioning |
+| **Live Production Deployment** | Deployed separately from this feature branch | Existing Render frontend/backend links are listed above; WhatsApp Mock Mode remains feature-branch-only |
 
 ---
 
@@ -489,7 +513,7 @@ The repository includes comprehensive automated test suites for both backend and
 ```bash
 .venv/bin/pytest backend/tests -v
 ```
-**Results**: **77 passed** in ~4.4s
+**Results on the WhatsApp Mock Mode feature branch**: **126 passed, 1 skipped** (reported by the branch verification run)
 - 7 tests in `backend/tests/api/test_chat_action_generation.py` (atomic action generation, retry idempotency, error rollbacks)
 - 6 tests in `backend/tests/api/test_actions.py` (review queue endpoints, status transitions, conflicts)
 - 34 tests in other API suites (auth, context CRUD, conversations, health)
@@ -501,7 +525,7 @@ The repository includes comprehensive automated test suites for both backend and
 ```bash
 npm --prefix frontend test
 ```
-**Results**: **42 passed** in ~130ms
+**Results on the WhatsApp Mock Mode feature branch**: **55 passed**
 - Actions Review Queue & Decision Recording (7 tests)
 - API Client & Error/CSRF Handling (4 tests)
 - Context Management & Optimistic Concurrency (6 tests)
@@ -524,7 +548,7 @@ npm --prefix frontend run build
 
 ### Continuous Integration (GitHub Actions)
 The repository defines an automated CI workflow in [`.github/workflows/ci.yml`](.github/workflows/ci.yml) that executes on all pushes and pull requests across `main`, `feature/**`, and `chore/**` branches:
-- **Backend Quality**: Runs with a dedicated PostgreSQL 16 service container, checks Alembic migrations from root, and executes the complete 77-test Pytest suite with `LLM_PROVIDER=mock`.
+- **Backend Quality**: Runs with a dedicated PostgreSQL 16 service container, checks Alembic migrations from root, and executes the backend test suite with `LLM_PROVIDER=mock`.
 - **Frontend Quality**: Sets up Node.js 20, runs ESLint (`npm run lint`), Node.js unit tests (`npm test`), and the production build (`npm run build`).
 
 ---
@@ -532,7 +556,8 @@ The repository defines an automated CI workflow in [`.github/workflows/ci.yml`](
 ## 16. Current Limitations and Future Improvements
 
 ### Current Limitations
-1. **Synchronous Chat Turns**: Message turns execute as synchronous request/response HTTP cycles. Token streaming (Server-Sent Events / WebSockets) is not implemented in the current MVP.
+1. **WhatsApp Mock Mode is not deployed**: the mock inbox simulation exists on `feature/whatsapp-mock-mode` only. It records simulated delivery locally and does not contact Meta Graph API. It is not part of the current live website until explicitly reviewed, merged, and separately deployed.
+2. **Synchronous Chat Turns**: Message turns execute as synchronous request/response HTTP cycles. Token streaming (Server-Sent Events / WebSockets) is not implemented in the current MVP.
 2. **Single User per Merchant**: The data model supports 1 user owning 1 merchant profile. Multi-user organizations and role-based access control (e.g., manager vs. support agent) are planned for a subsequent phase.
 3. **Single Provider Configuration**: Provider selection is configured globally via environment variables rather than on a per-merchant basis.
 4. **Relational Keyword Context Retrieval**: Context items are retrieved via active status and exact/metadata queries. High-dimensional vector embeddings and similarity search (e.g., `pgvector`) are not yet integrated.
@@ -581,7 +606,7 @@ Follow these exact steps to run the complete Magicpin AI Agent full-stack applic
 ```bash
 git clone https://github.com/ArjunReddyVelma/magicpin-ai-agent.git
 cd magicpin-ai-agent
-git checkout feature/chat-action-generation
+git checkout feature/whatsapp-mock-mode
 ```
 
 ### 2. Create and Activate the Python Virtual Environment
