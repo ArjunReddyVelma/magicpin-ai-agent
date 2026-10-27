@@ -8,6 +8,10 @@ from backend.app.models.message import Message
 from backend.app.models.suggested_action import SuggestedAction
 from backend.app.models.audit_event import AuditEvent
 from backend.app.models.whatsapp import WhatsAppAccount, WhatsAppMessage
+from backend.app.models.customer_support import (
+    CustomerSupportSession,
+    CustomerSupportMessage,
+)
 
 __all__ = [
     "Base",
@@ -21,4 +25,6 @@ __all__ = [
     "AuditEvent",
     "WhatsAppAccount",
     "WhatsAppMessage",
+    "CustomerSupportSession",
+    "CustomerSupportMessage",
 ]

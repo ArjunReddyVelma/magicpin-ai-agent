@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime
 from typing import Optional, Any
-from sqlalchemy import String, DateTime, ForeignKey, func, Index
+from sqlalchemy import String, DateTime, ForeignKey, func, Index, text
 from sqlalchemy.dialects.postgresql import UUID, JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -40,4 +40,10 @@ class AuditEvent(Base):
 
     __table_args__ = (
         Index("ix_audit_events_merchant_created", "merchant_id", "created_at"),
+        Index(
+            "ix_audit_events_rate_limiting",
+            "event_type",
+            text("(metadata_json ->> 'key')"),
+            "created_at",
+        ),
     )
