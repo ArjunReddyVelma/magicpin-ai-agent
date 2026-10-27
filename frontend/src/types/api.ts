@@ -184,3 +184,68 @@ export interface SimulateInboundMessagePayload {
   customer_name?: string;
   message_text: string;
 }
+
+export type CustomerSupportStatus = 'needs_review' | 'delivered' | 'dismissed';
+export type CustomerSupportAiStatus = 'pending' | 'generating' | 'completed' | 'failed' | 'skipped';
+
+export interface CustomerSupportMessage {
+  id: string;
+  session_id: string;
+  merchant_id: string;
+  customer_name: string | null;
+  customer_text: string;
+  suggested_reply: string | null;
+  approved_reply: string | null;
+  status: CustomerSupportStatus;
+  ai_status: CustomerSupportAiStatus;
+  ai_error: string | null;
+  reviewed_at: string | null;
+  delivered_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CustomerSupportListResponse {
+  items: CustomerSupportMessage[];
+  total: number;
+  page: number;
+  page_size: number;
+}
+
+export interface PublicMerchantProfile {
+  merchant_id: string;
+  business_name: string;
+  category: string | null;
+  location: string | null;
+  description: string | null;
+}
+
+export interface CreateCustomerSessionResponse {
+  session_id: string;
+  customer_token: string;
+  status: string;
+  created_at: string;
+}
+
+export interface CustomerInquiryResponse {
+  id: string;
+  session_id: string;
+  customer_text: string;
+  status: string;
+  created_at: string;
+}
+
+export interface CustomerHistoryItem {
+  id: string;
+  customer_text: string;
+  reply: string | null;
+  status: string;
+  delivered_at: string | null;
+  created_at: string;
+}
+
+export interface CustomerHistoryResponse {
+  session_id: string;
+  items: CustomerHistoryItem[];
+  total: number;
+}

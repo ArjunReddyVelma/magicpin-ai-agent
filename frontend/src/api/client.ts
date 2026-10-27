@@ -17,6 +17,12 @@ import {
   WhatsAppAccountStatus,
   WhatsAppInboxMessage,
   SimulateInboundMessagePayload,
+  CustomerSupportMessage,
+  CustomerSupportListResponse,
+  PublicMerchantProfile,
+  CreateCustomerSessionResponse,
+  CustomerInquiryResponse,
+  CustomerHistoryResponse,
 } from '../types/api';
 
 export class ApiClientError extends Error {
@@ -121,7 +127,7 @@ export class ApiClient {
       );
     }
 
-    if (response.status === 401 && this.onUnauthorized) {
+    if (response.status === 401 && this.onUnauthorized && !endpoint.startsWith('/public/')) {
       this.onUnauthorized();
     }
 
@@ -405,6 +411,98 @@ export class ApiClient {
     return this.request<SuggestedAction>(`/actions/${id}/dismiss`, {
       method: 'POST',
     });
+  }
+
+  // Web Customer Support Inbox
+  public async listSupportMessages(params?: {
+    status?: string;
+    page?: number;
+    page_size?: number;
+  }): Promise<CustomerSupportListResponse> {
+    const searchParams = new URLSearchParams();
+    if (params?.status) searchParams.set('status', params.status);
+    if (params?.page) searchParams.set('page', String(params.page));
+    if (params?.page_size) searchParams.set('page_size', String(params.page_size));
+
+    const qs = searchParams.toString();
+    return this.request<CustomerSupportListResponse>(`/support/messages${qs ? `?${qs}` : ''}`);
+  }
+
+  public async editSupportSuggestedReply(
+    id: string,
+    suggested_reply: string
+  ): Promise<CustomerSupportMessage> {
+    return this.request<CustomerSupportMessage>(`/support/messages/${id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ suggested_reply }),
+    });
+  }
+
+  public async deliverSupportReply(
+    id: string,
+    reply_text?: string
+  ): Promise<CustomerSupportMessage> {
+    return this.request<CustomerSupportMessage>(`/support/messages/${id}/deliver`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ reply_text: reply_text || undefined }),
+    });
+  }
+
+  public async dismissSupportMessage(id: string): Promise<CustomerSupportMessage> {
+    return this.request<CustomerSupportMessage>(`/support/messages/${id}/dismiss`, {
+      method: 'POST',
+    });
+  }
+
+  // Public Web Customer Support
+  public async getPublicMerchantProfile(merchantId: string): Promise<PublicMerchantProfile> {
+    return this.request<PublicMerchantProfile>(`/public/support/merchants/${merchantId}`);
+  }
+
+  public async createCustomerSupportSession(
+    merchantId: string,
+    customerName?: string
+  ): Promise<CreateCustomerSessionResponse> {
+    return this.request<CreateCustomerSessionResponse>('/public/support/sessions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        merchant_id: merchantId,
+        customer_name: customerName ? customerName.trim() : undefined,
+      }),
+    });
+  }
+
+  public async submitCustomerInquiry(
+    sessionId: string,
+    customerToken: string,
+    content: string
+  ): Promise<CustomerInquiryResponse> {
+    return this.request<CustomerInquiryResponse>(`/public/support/sessions/${sessionId}/messages`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Customer-Token': customerToken,
+      },
+      body: JSON.stringify({ content: content.trim() }),
+    });
+  }
+
+  public async getCustomerHistory(
+    sessionId: string,
+    customerToken: string,
+    limit: number = 100
+  ): Promise<CustomerHistoryResponse> {
+    return this.request<CustomerHistoryResponse>(
+      `/public/support/sessions/${sessionId}/messages?limit=${limit}`,
+      {
+        headers: {
+          'X-Customer-Token': customerToken,
+        },
+      }
+    );
   }
 }
 

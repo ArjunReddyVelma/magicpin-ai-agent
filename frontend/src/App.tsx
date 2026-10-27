@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { LoginPage } from './pages/LoginPage';
 import { RegisterPage } from './pages/RegisterPage';
@@ -11,6 +11,8 @@ import { SettingsPage } from './pages/SettingsPage';
 import { PrivacyPolicyPage } from './pages/PrivacyPolicyPage';
 import { TermsOfServicePage } from './pages/TermsOfServicePage';
 import { WhatsAppInboxPage } from './pages/WhatsAppInboxPage';
+import { SupportInboxPage } from './pages/SupportInboxPage';
+import { CustomerSupportPage } from './pages/CustomerSupportPage';
 
 function AppShell() {
   const { isAuthenticated, isLoading } = useAuth();
@@ -78,6 +80,8 @@ function AppShell() {
 
         {activeTab === 'actions' && <ActionsPage />}
 
+        {activeTab === 'support' && <SupportInboxPage />}
+
         {activeTab === 'whatsapp' && <WhatsAppInboxPage />}
 
         {activeTab === 'settings' && <SettingsPage />}
@@ -115,6 +119,35 @@ function AppShell() {
 }
 
 export function App() {
+  const [pathname, setPathname] = useState<string>(() =>
+    typeof window !== 'undefined' ? window.location.pathname : ''
+  );
+
+  useEffect(() => {
+    const onPopState = () => {
+      setPathname(window.location.pathname);
+    };
+    window.addEventListener('popstate', onPopState);
+    return () => window.removeEventListener('popstate', onPopState);
+  }, []);
+
+  // Public Support route matching: /support or /support/:merchant_id
+  const supportMatch = pathname.match(/^\/support(?:\/([^/?#]+))?\/?$/);
+  if (supportMatch) {
+    const merchantId = supportMatch[1] ? decodeURIComponent(supportMatch[1]) : '';
+    return (
+      <CustomerSupportPage
+        merchantId={merchantId}
+        onNavigateHome={() => {
+          if (typeof window !== 'undefined') {
+            window.history.pushState({}, '', '/');
+            setPathname('/');
+          }
+        }}
+      />
+    );
+  }
+
   return (
     <AuthProvider>
       <AppShell />
