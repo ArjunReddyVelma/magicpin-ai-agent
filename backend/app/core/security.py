@@ -66,6 +66,152 @@ def verify_csrf_token(submitted_token: str, session_id: uuid.UUID, user_id: uuid
     return hmac.compare_digest(submitted_token.strip(), expected)
 
 
+import ipaddress
+from typing import Union, Set
+from fastapi import Request
+
+
+def parse_trusted_proxies(
+    configured: Optional[Union[str, List[str], Set[str]]] = None,
+) -> List[Union[ipaddress.IPv4Network, ipaddress.IPv6Network]]:
+    """
+    Parses configured trusted proxy IPs and CIDR networks into ipaddress network objects.
+    Defaults to settings.TRUSTED_PROXIES if configured is None.
+    """
+    if configured is None:
+        configured = getattr(settings, "TRUSTED_PROXIES", "127.0.0.1,::1")
+
+    if isinstance(configured, str):
+        items = [item.strip() for item in configured.split(",") if item.strip()]
+    else:
+        items = [str(item).strip() for item in configured if str(item).strip()]
+
+    networks: List[Union[ipaddress.IPv4Network, ipaddress.IPv6Network]] = []
+    for item in items:
+        try:
+            # Handles both CIDR notation (e.g. 10.0.0.0/8) and individual IPs (127.0.0.1)
+            net = ipaddress.ip_network(item, strict=False)
+            networks.append(net)
+        except ValueError:
+            # Malformed or unparseable proxy network definition is safely ignored
+            continue
+    return networks
+
+
+def _clean_ip_candidate(candidate: str) -> Optional[str]:
+    """
+    Sanitizes and extracts an IP address string from a raw candidate hop.
+    Handles port stripping (IPv4 with port, IPv6 in brackets with port).
+    Returns None if the candidate cannot be parsed as a valid IP.
+    """
+    if not candidate:
+        return None
+
+    cleaned = candidate.strip().strip('"').strip("'")
+    if not cleaned:
+        return None
+
+    # Handle bracketed IPv6, e.g. [2001:db8::1] or [2001:db8::1]:8080
+    if cleaned.startswith("[") and "]" in cleaned:
+        bracket_end = cleaned.find("]")
+        cleaned = cleaned[1:bracket_end]
+    elif cleaned.count(":") == 1:
+        # IPv4 with port, e.g. 203.0.113.195:443
+        cleaned = cleaned.split(":")[0]
+
+    try:
+        addr = ipaddress.ip_address(cleaned)
+        return str(addr)
+    except ValueError:
+        return None
+
+
+def get_client_ip(
+    request: Request,
+    trusted_proxies: Optional[Union[str, List[str], Set[str]]] = None,
+) -> str:
+    """
+    Extracts the authentic client IP address from an incoming HTTP request.
+
+    Security model & spoof-prevention rules:
+    1. Obtains the immediate TCP peer address from request.client.host.
+    2. If request.client is None or peer_ip is invalid/empty, returns 'unknown'.
+    3. Resolves the configured list of trusted proxies (from trusted_proxies or settings.TRUSTED_PROXIES).
+    4. UNTRUSTED PEER BOUNDARY: If the immediate peer address is NOT in the trusted proxy list,
+       forwarding headers (X-Forwarded-For) are STRICTLY IGNORED. The immediate peer address
+       is returned. This prevents arbitrary clients from spoofing their IP.
+    5. TRUSTED PROXY TRAVERSAL: If the immediate peer IS a trusted proxy:
+       - Parses X-Forwarded-For header values into individual hops.
+       - Traverses hops from RIGHT TO LEFT (most recent proxy to earliest).
+       - Each hop is sanitized and validated. Malformed hops are safely skipped without throwing errors.
+       - The first hop from the right that is NOT in the trusted proxy list is selected as the authentic client IP.
+       - If all valid hops in X-Forwarded-For are trusted proxies, returns the leftmost trusted hop.
+       - If X-Forwarded-For is missing, empty, or contains only malformed hops, falls back safely to peer_ip.
+    """
+    if not request.client or not request.client.host:
+        return "unknown"
+
+    peer_raw = request.client.host.strip()
+    peer_ip = _clean_ip_candidate(peer_raw)
+    if not peer_ip:
+        return peer_raw or "unknown"
+
+    trusted_nets = parse_trusted_proxies(trusted_proxies)
+    if not trusted_nets:
+        # No trusted proxies configured; peer is directly authoritative
+        return peer_ip
+
+    try:
+        peer_addr = ipaddress.ip_address(peer_ip)
+    except ValueError:
+        return peer_ip
+
+    is_peer_trusted = any(peer_addr in net for net in trusted_nets)
+    if not is_peer_trusted:
+        # Request arrived directly or from an untrusted peer. Ignore forwarding headers completely.
+        return peer_ip
+
+    # Peer is trusted; inspect X-Forwarded-For
+    xff_entries = (
+        request.headers.getlist("x-forwarded-for")
+        if hasattr(request.headers, "getlist")
+        else ([request.headers.get("x-forwarded-for")] if request.headers.get("x-forwarded-for") else [])
+    )
+    if not xff_entries:
+        return peer_ip
+
+    # Extract all raw hops across all X-Forwarded-For header entries
+    raw_hops: List[str] = []
+    for entry in xff_entries:
+        if entry and entry.strip():
+            raw_hops.extend(h.strip() for h in entry.split(",") if h.strip())
+
+    if not raw_hops:
+        return peer_ip
+
+    # Clean and parse valid IP hops
+    valid_hops: List[Union[ipaddress.IPv4Address, ipaddress.IPv6Address]] = []
+    for h in raw_hops:
+        cleaned = _clean_ip_candidate(h)
+        if cleaned:
+            try:
+                valid_hops.append(ipaddress.ip_address(cleaned))
+            except ValueError:
+                continue
+
+    if not valid_hops:
+        # Malformed or unparseable headers fall back safely to peer IP
+        return peer_ip
+
+    # Traverse from RIGHT to LEFT to find the first untrusted hop
+    for hop_addr in reversed(valid_hops):
+        if not any(hop_addr in net for net in trusted_nets):
+            return str(hop_addr)
+
+    # All hops in the chain are in the trusted proxy set; return leftmost hop
+    return str(valid_hops[0])
+
+
 from datetime import datetime, timedelta, timezone
 from fastapi import HTTPException, status
 from sqlalchemy import select, func

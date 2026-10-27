@@ -356,6 +356,7 @@ def test_whatsapp_encryption_configuration_failures(client, monkeypatch):
 
 
 def test_whatsapp_send_success_and_already_sent(client, monkeypatch):
+    monkeypatch.setattr(settings, "WHATSAPP_MODE", "live")
     monkeypatch.setattr(settings, "WHATSAPP_APP_SECRET", "test-app-secret")
     monkeypatch.setattr(settings, "WHATSAPP_ENCRYPTION_KEY", "u6N77xV0B1B6bKkCkJy3qQ8eM2fD4aX9tG7hP5rS1v8=")
 
@@ -488,6 +489,7 @@ def test_whatsapp_send_in_progress_concurrency_lock(client, monkeypatch, db_sess
 
 
 def test_whatsapp_send_meta_rejection_captures_error(client, monkeypatch, db_session):
+    monkeypatch.setattr(settings, "WHATSAPP_MODE", "live")
     monkeypatch.setattr(settings, "WHATSAPP_APP_SECRET", "test-app-secret")
     monkeypatch.setattr(settings, "WHATSAPP_ENCRYPTION_KEY", "u6N77xV0B1B6bKkCkJy3qQ8eM2fD4aX9tG7hP5rS1v8=")
 
@@ -557,6 +559,7 @@ def test_whatsapp_send_meta_rejection_captures_error(client, monkeypatch, db_ses
 
 
 def test_whatsapp_send_timeout_marks_ambiguous_and_requires_force(client, monkeypatch, db_session):
+    monkeypatch.setattr(settings, "WHATSAPP_MODE", "live")
     monkeypatch.setattr(settings, "WHATSAPP_APP_SECRET", "test-app-secret")
     monkeypatch.setattr(settings, "WHATSAPP_ENCRYPTION_KEY", "u6N77xV0B1B6bKkCkJy3qQ8eM2fD4aX9tG7hP5rS1v8=")
 
@@ -813,6 +816,7 @@ def test_whatsapp_stale_sending_recovered_to_send_ambiguous_in_list_messages(cli
 
 
 def test_whatsapp_stale_sending_recovered_in_send_reply_and_requires_force(client, monkeypatch, db_session):
+    monkeypatch.setattr(settings, "WHATSAPP_MODE", "live")
     monkeypatch.setattr(settings, "WHATSAPP_ENCRYPTION_KEY", "u6N77xV0B1B6bKkCkJy3qQ8eM2fD4aX9tG7hP5rS1v8=")
 
     reg = client.post(

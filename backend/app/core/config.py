@@ -1,7 +1,7 @@
 import os
 import urllib.parse
 from typing import List
-from pydantic import Field, field_validator, model_validator
+from pydantic import Field, field_validator, model_validator, AliasChoices
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -40,7 +40,7 @@ class Settings(BaseSettings):
 
     # LLM Settings
     LLM_PROVIDER: str = "groq"
-    LLM_API_KEY: str = ""
+    LLM_API_KEY: str = Field(default="", validation_alias=AliasChoices("LLM_API_KEY", "GROQ_API_KEY"))
     LLM_MODEL: str = "openai/gpt-oss-120b"
     LLM_TIMEOUT_SECONDS: int = 30
     LLM_MAX_RETRIES: int = 2
@@ -95,6 +95,10 @@ class Settings(BaseSettings):
     COOKIE_NAME: str = "mp_session"
     RATE_LIMIT_LOGIN_MAX_ATTEMPTS: int = 5
     RATE_LIMIT_LOGIN_WINDOW_SECONDS: int = 900
+
+    # Reverse Proxy & Trusted Proxy Configuration
+    # Comma-separated list of IP addresses or CIDR blocks considered trusted proxies.
+    TRUSTED_PROXIES: str = "127.0.0.1,::1"
 
     # Observability
     LOG_LEVEL: str = "INFO"
