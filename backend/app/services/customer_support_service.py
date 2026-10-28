@@ -154,10 +154,12 @@ class CustomerSupportService:
     def submit_customer_inquiry(
         self,
         session_id: uuid.UUID,
-        customer_token: Optional[str],
-        content: str,
+        customer_token: Optional[str] = None,
+        content: str = "",
+        session: Optional[CustomerSupportSession] = None,
     ) -> CustomerSupportMessage:
-        session = self.verify_customer_session(session_id, customer_token)
+        if session is None:
+            session = self.verify_customer_session(session_id, customer_token)
 
         # 1. Persist inquiry first so it survives any downstream AI failure
         msg = self.repository.create_message(

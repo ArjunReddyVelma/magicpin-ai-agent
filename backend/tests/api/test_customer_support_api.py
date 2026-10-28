@@ -632,6 +632,77 @@ def test_rate_limiting_enforced(
         support_rate_limiter.reset()
 
 
+def test_invalid_token_does_not_consume_session_quota(
+    client: TestClient, test_merchant: MerchantProfile
+):
+    support_rate_limiter.reset()
+    orig_msg_limit = support_rate_limiter.message_session_limit
+
+    try:
+        support_rate_limiter.message_session_limit = 2
+
+        # Create session
+        s = client.post(
+            "/v1/public/support/sessions",
+            json={"merchant_id": str(test_merchant.id)},
+        ).json()
+        s_id = s["session_id"]
+        s_tok = s["customer_token"]
+
+        # 1. Submit requests with missing or invalid tokens
+        # Missing token -> 401
+        r_no_tok = client.post(
+            f"/v1/public/support/sessions/{s_id}/messages",
+            json={"content": "Unauthorized attempt 1"},
+        )
+        assert r_no_tok.status_code == 401
+
+        # Invalid token -> 403
+        r_bad_tok1 = client.post(
+            f"/v1/public/support/sessions/{s_id}/messages",
+            json={"content": "Unauthorized attempt 2"},
+            headers={"X-Customer-Token": "invalid-token-attempt-1"},
+        )
+        assert r_bad_tok1.status_code == 403
+
+        r_bad_tok2 = client.post(
+            f"/v1/public/support/sessions/{s_id}/messages",
+            json={"content": "Unauthorized attempt 3"},
+            headers={"X-Customer-Token": "invalid-token-attempt-2"},
+        )
+        assert r_bad_tok2.status_code == 403
+
+        # 2. Legitimate user submits valid messages using their valid token
+        # First valid message -> 201 (quota was NOT consumed by the 3 invalid attempts)
+        m1 = client.post(
+            f"/v1/public/support/sessions/{s_id}/messages",
+            json={"content": "Valid message 1"},
+            headers={"X-Customer-Token": s_tok},
+        )
+        assert m1.status_code == 201
+
+        # Second valid message -> 201 (completes the quota of 2)
+        m2 = client.post(
+            f"/v1/public/support/sessions/{s_id}/messages",
+            json={"content": "Valid message 2"},
+            headers={"X-Customer-Token": s_tok},
+        )
+        assert m2.status_code == 201
+
+        # Third valid message -> 429 (quota is properly enforced on authenticated messages)
+        m3 = client.post(
+            f"/v1/public/support/sessions/{s_id}/messages",
+            json={"content": "Valid message 3 exceeding quota"},
+            headers={"X-Customer-Token": s_tok},
+        )
+        assert m3.status_code == 429
+        assert m3.json()["error"]["code"] == "RATE_LIMIT_EXCEEDED"
+
+    finally:
+        support_rate_limiter.message_session_limit = orig_msg_limit
+        support_rate_limiter.reset()
+
+
 # ---------------------------------------------------------------------------
 # 16. Regression: WhatsApp and copilot continue to pass
 # ---------------------------------------------------------------------------

@@ -10,29 +10,25 @@ A standalone **Merchant Support Copilot and Knowledge Management Workspace** bui
 
 The application enables merchants to maintain their business context and operating policies, conduct AI-assisted support conversations grounded in their active knowledge base, and safely review AI-generated customer reply drafts through an audited **Human-in-the-Loop** review queue.
 
-## Current development and deployment status
+## Live deployment
 
-- **Current feature branch:** [`feature/whatsapp-mock-mode`](https://github.com/ArjunReddyVelma/magicpin-ai-agent/tree/feature/whatsapp-mock-mode)
-- **Latest WhatsApp Mock Mode commit:** [`71ecd68`](https://github.com/ArjunReddyVelma/magicpin-ai-agent/commit/71ecd686212669a7d734d4c77cb945faef15bab0)
-- **CI:** [CI Quality Gate run](https://github.com/ArjunReddyVelma/magicpin-ai-agent/actions/runs/39904782653) — passed for the feature commit.
-- **Deployment boundary:** WhatsApp Mock Mode is published on this feature branch for development and review only. It has **not** been merged into the live website branch and must not be treated as deployed.
-- **Mock-mode safety:** Set `WHATSAPP_MODE=mock` only in a local development environment. Keep the live deployment in `live` mode; mock endpoints are intentionally unavailable in live mode.
+**Open the deployed application:** [https://magicpin-frontend.onrender.com](https://magicpin-frontend.onrender.com)
 
-### Deployed application links
-
-These are the Render URLs configured/used for the deployed application. Confirm the frontend hostname in the Render dashboard if Render assigned a suffixed hostname.
-
-| Service | URL | Purpose |
+| Link | URL | What it is |
 |---|---|---|
-| Frontend web app | [https://magicpin-frontend.onrender.com](https://magicpin-frontend.onrender.com) | Live merchant dashboard (deployed version; does not include the unmerged mock-mode feature) |
-| Backend API | [https://magicpin-backend.onrender.com](https://magicpin-backend.onrender.com) | Live FastAPI service |
-| Backend readiness | [https://magicpin-backend.onrender.com/v1/readyz](https://magicpin-backend.onrender.com/v1/readyz) | Health/readiness check; expected JSON includes database status |
-| Swagger API docs | [https://magicpin-backend.onrender.com/docs](https://magicpin-backend.onrender.com/docs) | Interactive API documentation, if enabled by the deployed configuration |
-| ReDoc | [https://magicpin-backend.onrender.com/redoc](https://magicpin-backend.onrender.com/redoc) | Alternative API documentation, if enabled by the deployed configuration |
-| GitHub feature branch | [feature/whatsapp-mock-mode](https://github.com/ArjunReddyVelma/magicpin-ai-agent/tree/feature/whatsapp-mock-mode) | Review source changes without merging or deploying |
-| CI verification | [GitHub Actions run](https://github.com/ArjunReddyVelma/magicpin-ai-agent/actions/runs/39904782653) | Automated backend/frontend quality checks |
+| **Magicpin web app** | [magicpin-frontend.onrender.com](https://magicpin-frontend.onrender.com) | Deployed merchant dashboard |
+| Backend API | [magicpin-backend.onrender.com](https://magicpin-backend.onrender.com) | FastAPI backend service |
+| Backend readiness | [Check service readiness](https://magicpin-backend.onrender.com/v1/readyz) | Database/service health response |
+| Swagger API docs | [API documentation](https://magicpin-backend.onrender.com/docs) | Interactive API reference, when enabled |
+| ReDoc | [Alternative API documentation](https://magicpin-backend.onrender.com/redoc) | Alternative API reference, when enabled |
+| Source repository | [GitHub repository](https://github.com/ArjunReddyVelma/magicpin-ai-agent) | Source code and development history |
 
-> **Important:** the live site and its backend remain on their existing deployment version. Pushing this feature branch does not merge it into production. Do not enable mock mode in Render or send real WhatsApp messages while testing this feature.
+### Deployment and feature status
+
+- The deployed application is configured on Render with a React frontend, FastAPI backend, and PostgreSQL database.
+- The WhatsApp integration MVP is part of the `feature/frontend-core` development line. It includes webhook validation, merchant account mapping, inbox/draft/send workflows, and delivery/error tracking; completing real Meta messaging still depends on valid Meta account status, webhook subscription/configuration, and merchant credentials.
+- **WhatsApp Mock Mode is not part of this deployment.** It remains on the separate `feature/whatsapp-mock-mode` branch for local development and testing only.
+- The Render blueprint currently describes a free PostgreSQL database. Free Render databases are temporary and should not be used for durable production/customer data.
 
 ---
 
@@ -106,10 +102,10 @@ Generic AI chatbots often fail in this domain because they hallucinate store pol
 | **Failed-Turn Recovery & Idempotency** | Implemented | HTTP 502 recovery, retry message ID, idempotency keys |
 | **Chat-to-Action Generation** | Implemented | 7 integration tests passing; atomic row-locked transactions |
 | **Suggested Actions Review Queue** | Implemented | Paginated queue, state machine, zero side-effects verified |
-| **Frontend Single-Page Application** | Implemented | 55 frontend tests reported passing; lint and production build passed on the mock-mode feature branch |
-| **Full-Stack Integration Audit** | Implemented | 126 backend tests passed, 1 skipped; 55 frontend tests passed on the mock-mode feature branch |
+| **Frontend Single-Page Application** | Implemented | 84 frontend tests passing; lint and production build verified |
+| **Full-Stack Integration Audit** | Implemented | 205 backend tests passing (1 live smoke test skipped without API key); 84 frontend tests passing |
 | **Legal Pages (Privacy & Terms)** | Draft Implemented | Reachable in UI; operational disclosures with pending-review notices |
-| **Live Production Deployment** | Deployed separately from this feature branch | Existing Render frontend/backend links are listed above; WhatsApp Mock Mode remains feature-branch-only |
+| **Live Production Deployment** | Deployed separately from this feature branch | Render frontend/backend links listed above; WhatsApp Mock Mode remains local/review only |
 
 ---
 
@@ -513,26 +509,30 @@ The repository includes comprehensive automated test suites for both backend and
 ```bash
 .venv/bin/pytest backend/tests -v
 ```
-**Results on the WhatsApp Mock Mode feature branch**: **126 passed, 1 skipped** (reported by the branch verification run)
-- 7 tests in `backend/tests/api/test_chat_action_generation.py` (atomic action generation, retry idempotency, error rollbacks)
-- 6 tests in `backend/tests/api/test_actions.py` (review queue endpoints, status transitions, conflicts)
-- 34 tests in other API suites (auth, context CRUD, conversations, health)
-- 13 integration tests (repositories, database constraints)
-- 10 security tests (Argon2id, CSRF token verification, cross-tenant isolation)
-- 7 unit tests (response validation, prompt builder)
+**Results**: **205 passed, 1 skipped** (1 live Groq smoke test skipped when live API key is not configured)
+- Customer support web API and multi-tenant isolation tests
+- Rate limiting optimization functional index and ephemeral pruning tests
+- Chat action generation, review queue, and recovery idempotency tests
+- Context CRUD, optimistic concurrency, and conversation memory tests
+- Database isolation safeguards and deployment contract tests
+- WhatsApp Cloud API live and mock simulation tests
 
 ### Frontend Tests (Node.js Test Runner)
 ```bash
 npm --prefix frontend test
 ```
-**Results on the WhatsApp Mock Mode feature branch**: **55 passed**
+**Results**: **84 passed**
+- Customer Support public chat interface & session management (18 tests)
+- Merchant Support review inbox & human approval workflow (8 tests)
+- WhatsApp inbox & mock mode simulation controls (6 tests)
 - Actions Review Queue & Decision Recording (7 tests)
-- API Client & Error/CSRF Handling (4 tests)
 - Context Management & Optimistic Concurrency (6 tests)
 - Merchant Profile & Dashboard (5 tests)
 - Legal Pages Routing & Disclosures (5 tests)
 - Account Deletion & Session Logout (7 tests)
 - Conversations, Message Retries & Provider Failure Recovery (8 tests)
+- API Client, Base URL Resolution & Error/CSRF Handling (11 tests)
+- Deployment routing & static rewrite contracts (3 tests)
 
 ### Frontend Linting (ESLint)
 ```bash
@@ -549,20 +549,20 @@ npm --prefix frontend run build
 ### Continuous Integration (GitHub Actions)
 The repository defines an automated CI workflow in [`.github/workflows/ci.yml`](.github/workflows/ci.yml) that executes on all pushes and pull requests across `main`, `feature/**`, and `chore/**` branches:
 - **Backend Quality**: Runs with a dedicated PostgreSQL 16 service container, checks Alembic migrations from root, and executes the backend test suite with `LLM_PROVIDER=mock`.
-- **Frontend Quality**: Sets up Node.js 20, runs ESLint (`npm run lint`), Node.js unit tests (`npm test`), and the production build (`npm run build`).
+- **Frontend Quality**: Sets up Node.js 22, runs ESLint (`npm run lint`), Node.js unit tests (`npm test`), and the production build (`npm run build`).
 
 ---
 
 ## 16. Current Limitations and Future Improvements
 
 ### Current Limitations
-1. **WhatsApp Mock Mode is not deployed**: the mock inbox simulation exists on `feature/whatsapp-mock-mode` only. It records simulated delivery locally and does not contact Meta Graph API. It is not part of the current live website until explicitly reviewed, merged, and separately deployed.
+1. **WhatsApp Mock Mode is not deployed**: The mock inbox simulation exists on `feature/whatsapp-mock-mode` for local development/testing only. It records simulated delivery locally and does not contact Meta Graph API. Simulated delivery state is not proof of external delivery.
 2. **Synchronous Chat Turns**: Message turns execute as synchronous request/response HTTP cycles. Token streaming (Server-Sent Events / WebSockets) is not implemented in the current MVP.
-2. **Single User per Merchant**: The data model supports 1 user owning 1 merchant profile. Multi-user organizations and role-based access control (e.g., manager vs. support agent) are planned for a subsequent phase.
-3. **Single Provider Configuration**: Provider selection is configured globally via environment variables rather than on a per-merchant basis.
-4. **Relational Keyword Context Retrieval**: Context items are retrieved via active status and exact/metadata queries. High-dimensional vector embeddings and similarity search (e.g., `pgvector`) are not yet integrated.
-5. **No Outbound Messaging Automation**: In compliance with the Human-in-the-Loop review constraint, the system does not integrate external WhatsApp, SMS, or email dispatch APIs. Approvals record decisions only.
-6. **Default Branch History Alignment**: The GitHub repository's default branch `main` contains an unrelated Git history from an early single-directory prototype. The modular redesign resides on active feature branches (`origin/feature/frontend-core` containing merged PR #1 and `chore/repository-alignment-hardening`). Merging or reconciling the default branch is documented as an outstanding item pending project consensus.
+3. **Single User per Merchant**: The data model supports 1 user owning 1 merchant profile. Multi-user organizations and role-based access control (e.g., manager vs. support agent) are planned for a subsequent phase.
+4. **Single Provider Configuration**: Provider selection is configured globally via environment variables rather than on a per-merchant basis.
+5. **Relational Keyword Context Retrieval**: Context items are retrieved via active status and exact/metadata queries. High-dimensional vector embeddings and similarity search (e.g., `pgvector`) are not yet integrated.
+6. **WhatsApp Cloud API External Dispatch**: Outbound message sending requires valid Meta business credentials, phone number ID, and webhook subscription. In mock mode (`WHATSAPP_MODE=mock`), dispatch is simulated locally and Meta API is not contacted.
+7. **Default Branch History Alignment**: The GitHub repository's default branch `main` contains an unrelated Git history from an early single-directory prototype. Active development and integration occur on `feature/frontend-core`.
 
 ### Planned Improvements
 - Integration of `pgvector` for semantic context retrieval across extensive merchant catalogs.

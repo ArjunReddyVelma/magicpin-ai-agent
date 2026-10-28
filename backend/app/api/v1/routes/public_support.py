@@ -79,13 +79,17 @@ def submit_customer_inquiry(
 ) -> CustomerInquiryResponse:
     client_ip = get_client_ip(request)
     support_rate_limiter.check_message_submission(client_ip, session_id, db=db)
-    support_rate_limiter.record_message_submission(client_ip, session_id, db=db)
 
     service = CustomerSupportService(db=db, llm_provider=llm_provider)
+    session = service.verify_customer_session(session_id, x_customer_token)
+
+    support_rate_limiter.record_message_submission(client_ip, session_id, db=db)
+
     msg = service.submit_customer_inquiry(
-        session_id=session_id,
+        session_id=session.id,
         customer_token=x_customer_token,
         content=req.content,
+        session=session,
     )
 
     return CustomerInquiryResponse(
