@@ -5,6 +5,7 @@ import uuid
 from datetime import datetime, timedelta, timezone
 import httpx
 import pytest
+from cryptography.fernet import Fernet
 from sqlalchemy.exc import IntegrityError
 
 from backend.app.core.config import settings
@@ -355,6 +356,7 @@ def test_whatsapp_encryption_configuration_failures(client, monkeypatch):
 
 
 def test_whatsapp_send_success_and_already_sent(client, monkeypatch):
+    monkeypatch.setattr(settings, "WHATSAPP_MODE", "live")
     monkeypatch.setattr(settings, "WHATSAPP_APP_SECRET", "test-app-secret")
     monkeypatch.setattr(settings, "WHATSAPP_ENCRYPTION_KEY", "u6N77xV0B1B6bKkCkJy3qQ8eM2fD4aX9tG7hP5rS1v8=")
 
@@ -487,6 +489,7 @@ def test_whatsapp_send_in_progress_concurrency_lock(client, monkeypatch, db_sess
 
 
 def test_whatsapp_send_meta_rejection_captures_error(client, monkeypatch, db_session):
+    monkeypatch.setattr(settings, "WHATSAPP_MODE", "live")
     monkeypatch.setattr(settings, "WHATSAPP_APP_SECRET", "test-app-secret")
     monkeypatch.setattr(settings, "WHATSAPP_ENCRYPTION_KEY", "u6N77xV0B1B6bKkCkJy3qQ8eM2fD4aX9tG7hP5rS1v8=")
 
@@ -556,6 +559,7 @@ def test_whatsapp_send_meta_rejection_captures_error(client, monkeypatch, db_ses
 
 
 def test_whatsapp_send_timeout_marks_ambiguous_and_requires_force(client, monkeypatch, db_session):
+    monkeypatch.setattr(settings, "WHATSAPP_MODE", "live")
     monkeypatch.setattr(settings, "WHATSAPP_APP_SECRET", "test-app-secret")
     monkeypatch.setattr(settings, "WHATSAPP_ENCRYPTION_KEY", "u6N77xV0B1B6bKkCkJy3qQ8eM2fD4aX9tG7hP5rS1v8=")
 
@@ -812,6 +816,7 @@ def test_whatsapp_stale_sending_recovered_to_send_ambiguous_in_list_messages(cli
 
 
 def test_whatsapp_stale_sending_recovered_in_send_reply_and_requires_force(client, monkeypatch, db_session):
+    monkeypatch.setattr(settings, "WHATSAPP_MODE", "live")
     monkeypatch.setattr(settings, "WHATSAPP_ENCRYPTION_KEY", "u6N77xV0B1B6bKkCkJy3qQ8eM2fD4aX9tG7hP5rS1v8=")
 
     reg = client.post(
@@ -945,3 +950,475 @@ def test_whatsapp_active_sending_not_recovered_as_stale(client, monkeypatch, db_
     assert inbox_resp.status_code == 200
     items = inbox_resp.json()["items"]
     assert items[0]["status"] == "sending"
+
+
+def test_whatsapp_account_reports_mode(client, monkeypatch):
+    reg = client.post(
+        "/v1/auth/register",
+        json={
+            "email": f"wa_mode_{uuid.uuid4().hex[:8]}@example.com",
+            "password": "Password123!",
+            "full_name": "Mode Test Merchant",
+            "business_name": "Mode Test Store",
+            "category": "Retail",
+        },
+    )
+    assert reg.status_code == 201
+
+    monkeypatch.setattr(settings, "WHATSAPP_MODE", "live")
+    resp_live = client.get("/v1/whatsapp/account")
+    assert resp_live.status_code == 200
+    assert resp_live.json()["mode"] == "live"
+
+    monkeypatch.setattr(settings, "WHATSAPP_MODE", "mock")
+    resp_mock = client.get("/v1/whatsapp/account")
+    assert resp_mock.status_code == 200
+    assert resp_mock.json()["mode"] == "mock"
+
+
+def test_whatsapp_mock_send_skips_meta_and_succeeds(client, monkeypatch, db_session):
+    monkeypatch.setattr(settings, "WHATSAPP_MODE", "mock")
+    monkeypatch.setattr(settings, "WHATSAPP_ENCRYPTION_KEY", "u6N77xV0B1B6bKkCkJy3qQ8eM2fD4aX9tG7hP5rS1v8=")
+
+    reg = client.post(
+        "/v1/auth/register",
+        json={
+            "email": f"wa_mock_send_{uuid.uuid4().hex[:8]}@example.com",
+            "password": "Password123!",
+            "full_name": "Mock Send Merchant",
+            "business_name": "Mock Send Store",
+            "category": "Retail",
+        },
+    )
+    assert reg.status_code == 201
+    csrf = reg.json()["csrf_token"]
+    merchant_id = uuid.UUID(reg.json()["merchant"]["id"])
+    phone_id = f"phone-mock-send-{uuid.uuid4().hex[:6]}"
+
+    # Account setup properly uses Fernet to encrypt token at rest
+    account_setup_resp = client.put(
+        "/v1/whatsapp/account",
+        headers={"X-CSRF-Token": csrf},
+        json={"phone_number_id": phone_id, "access_token": "EAAX_valid_mock_token_at_least_20_chars"},
+    )
+    assert account_setup_resp.status_code == 200
+
+    # Insert an inbound message awaiting merchant review
+    msg = WhatsAppMessage(
+        merchant_id=merchant_id,
+        phone_number_id=phone_id,
+        provider_message_id=f"wamid.sim_{uuid.uuid4().hex[:12]}",
+        customer_wa_id="919876543210",
+        customer_name="Mock Customer",
+        inbound_text="Is this item currently in stock?",
+        suggested_reply="Yes, it is in stock at our main branch.",
+        status="needs_review",
+    )
+    db_session.add(msg)
+    db_session.commit()
+
+    # Spy and fail on HTTP boundary (httpx.Client.post, request, send, httpx.post)
+    outbound_http_calls = []
+    def record_and_fail_http(*args, **kwargs):
+        outbound_http_calls.append({"args": args, "kwargs": kwargs})
+        raise AssertionError("Outbound HTTP request was unexpectedly attempted during mock send!")
+
+    monkeypatch.setattr(httpx.Client, "post", record_and_fail_http)
+    monkeypatch.setattr(httpx.Client, "request", record_and_fail_http)
+    monkeypatch.setattr(httpx.Client, "send", record_and_fail_http)
+    monkeypatch.setattr(httpx, "post", record_and_fail_http)
+
+    # Spy and fail on cipher / token decryption boundary
+    decryption_calls = []
+    def record_and_fail_cipher(*args, **kwargs):
+        decryption_calls.append(args)
+        raise AssertionError("Token decryption / cipher construction was unexpectedly invoked during mock send!")
+
+    monkeypatch.setattr("backend.app.api.v1.routes.whatsapp._cipher", record_and_fail_cipher)
+    monkeypatch.setattr(Fernet, "decrypt", record_and_fail_cipher)
+
+    # Approve and send reply in mock mode
+    send_resp = client.post(
+        f"/v1/whatsapp/messages/{msg.id}/send",
+        headers={"X-CSRF-Token": csrf},
+        json={"reply_text": "Yes, we have 5 units left in stock today."},
+    )
+    assert send_resp.status_code == 200
+    send_data = send_resp.json()
+    assert send_data["status"] == "sent"
+    assert send_data["sent_at"] is not None
+
+    # Exact boundary assertions proving zero HTTP and zero decryption invocations
+    assert len(outbound_http_calls) == 0, f"Expected 0 outbound HTTP calls, got {len(outbound_http_calls)}"
+    assert len(decryption_calls) == 0, f"Expected 0 token decryption calls, got {len(decryption_calls)}"
+
+    # Verify message in database
+    db_session.expire_all()
+    updated = db_session.get(WhatsAppMessage, msg.id)
+    assert updated.status == "sent"
+    assert updated.suggested_reply == "Yes, we have 5 units left in stock today."
+    assert updated.sent_provider_message_id.startswith("wamid.mock_")
+    assert updated.sent_at is not None
+    assert updated.last_error is None
+
+
+
+def test_whatsapp_mock_send_skips_decryption(client, monkeypatch, db_session):
+    monkeypatch.setattr(settings, "WHATSAPP_MODE", "mock")
+    # Deliberately clear encryption key to prove cipher/decryption is never called
+    monkeypatch.setattr(settings, "WHATSAPP_ENCRYPTION_KEY", "")
+
+    reg = client.post(
+        "/v1/auth/register",
+        json={
+            "email": f"wa_mock_cipher_{uuid.uuid4().hex[:8]}@example.com",
+            "password": "Password123!",
+            "full_name": "No Key Merchant",
+            "business_name": "No Key Store",
+            "category": "Retail",
+        },
+    )
+    assert reg.status_code == 201
+    csrf = reg.json()["csrf_token"]
+    merchant_id = uuid.UUID(reg.json()["merchant"]["id"])
+    phone_id = f"phone-no-cipher-{uuid.uuid4().hex[:6]}"
+
+    # Insert message directly without valid account/encryption
+    msg = WhatsAppMessage(
+        merchant_id=merchant_id,
+        phone_number_id=phone_id,
+        provider_message_id=f"wamid.sim_{uuid.uuid4().hex[:12]}",
+        customer_wa_id="919876543210",
+        customer_name="Cipher Test Customer",
+        inbound_text="Checking cipher skip",
+        suggested_reply="Ready to reply",
+        status="needs_review",
+    )
+    db_session.add(msg)
+    db_session.commit()
+
+    # Sending in mock mode must succeed without attempting token decryption
+    send_resp = client.post(
+        f"/v1/whatsapp/messages/{msg.id}/send",
+        headers={"X-CSRF-Token": csrf},
+        json={"reply_text": "Decryption was safely bypassed in mock mode"},
+    )
+    assert send_resp.status_code == 200
+    assert send_resp.json()["status"] == "sent"
+
+
+def test_whatsapp_simulate_inbound_creates_message_and_grounded_ai_draft(client, monkeypatch, db_session):
+    monkeypatch.setattr(settings, "WHATSAPP_MODE", "mock")
+    monkeypatch.setattr(settings, "WHATSAPP_ENCRYPTION_KEY", "u6N77xV0B1B6bKkCkJy3qQ8eM2fD4aX9tG7hP5rS1v8=")
+
+    reg = client.post(
+        "/v1/auth/register",
+        json={
+            "email": f"wa_sim_inbound_{uuid.uuid4().hex[:8]}@example.com",
+            "password": "Password123!",
+            "full_name": "Sim Inbound Merchant",
+            "business_name": "Sim Inbound Store",
+            "category": "Retail",
+        },
+    )
+    assert reg.status_code == 201
+    csrf = reg.json()["csrf_token"]
+    merchant_id = uuid.UUID(reg.json()["merchant"]["id"])
+
+    # Connect WhatsApp account for merchant
+    acc_resp = client.put(
+        "/v1/whatsapp/account",
+        headers={"X-CSRF-Token": csrf},
+        json={
+            "phone_number_id": "phone-sim-1",
+            "access_token": "EAAX_valid_mock_token_at_least_20_chars",
+        },
+    )
+    assert acc_resp.status_code == 200
+
+    # Simulate inbound customer message
+    sim_resp = client.post(
+        "/v1/whatsapp/mock/simulate-inbound",
+        headers={"X-CSRF-Token": csrf},
+        json={
+            "customer_wa_id": "919876543210",
+            "customer_name": "Ravi Kumar",
+            "message_text": "Do you offer home delivery in Indiranagar?",
+        },
+    )
+    assert sim_resp.status_code == 201
+    sim_data = sim_resp.json()
+
+    assert sim_data["customer_wa_id"] == "919876543210"
+    assert sim_data["customer_name"] == "Ravi Kumar"
+    assert sim_data["inbound_text"] == "Do you offer home delivery in Indiranagar?"
+    assert sim_data["status"] == "needs_review"
+    assert sim_data["provider_message_id"].startswith("wamid.sim_")
+    # Grounded AI draft suggestion must be present and not auto-sent
+    assert sim_data["suggested_reply"] is not None
+    assert len(sim_data["suggested_reply"]) > 0
+
+    # Verify message in inbox listing
+    inbox_resp = client.get("/v1/whatsapp/messages")
+    assert inbox_resp.status_code == 200
+    items = inbox_resp.json()["items"]
+    assert len(items) == 1
+    assert items[0]["id"] == sim_data["id"]
+    assert items[0]["status"] == "needs_review"
+
+    # Verify directly in DB
+    created_id = uuid.UUID(sim_data["id"])
+    db_msg = db_session.get(WhatsAppMessage, created_id)
+    assert db_msg is not None
+    assert db_msg.merchant_id == merchant_id
+    assert db_msg.status == "needs_review"
+
+
+def test_whatsapp_mock_endpoints_return_404_in_live_mode(client, monkeypatch):
+    monkeypatch.setattr(settings, "WHATSAPP_MODE", "live")
+
+    reg = client.post(
+        "/v1/auth/register",
+        json={
+            "email": f"wa_live_404_{uuid.uuid4().hex[:8]}@example.com",
+            "password": "Password123!",
+            "full_name": "Live Mode Merchant",
+            "business_name": "Live Mode Store",
+            "category": "Retail",
+        },
+    )
+    assert reg.status_code == 201
+    csrf = reg.json()["csrf_token"]
+
+    dummy_id = str(uuid.uuid4())
+
+    sim_resp = client.post(
+        "/v1/whatsapp/mock/simulate-inbound",
+        headers={"X-CSRF-Token": csrf},
+        json={
+            "customer_wa_id": "919876543210",
+            "customer_name": "Live Mode User",
+            "message_text": "Testing 404 in live mode",
+        },
+    )
+    assert sim_resp.status_code == 404
+
+    status_resp = client.post(
+        f"/v1/whatsapp/mock/messages/{dummy_id}/status",
+        headers={"X-CSRF-Token": csrf},
+        json={"status": "send_failed"},
+    )
+    assert status_resp.status_code == 404
+
+
+def test_whatsapp_mock_endpoints_require_auth_and_csrf(client, monkeypatch):
+    monkeypatch.setattr(settings, "WHATSAPP_MODE", "mock")
+
+    dummy_id = str(uuid.uuid4())
+
+    # Unauthenticated requests return 401
+    unauth_sim = client.post(
+        "/v1/whatsapp/mock/simulate-inbound",
+        json={
+            "customer_wa_id": "919876543210",
+            "customer_name": "Unauth User",
+            "message_text": "No cookie",
+        },
+    )
+    assert unauth_sim.status_code == 401
+
+    unauth_status = client.post(
+        f"/v1/whatsapp/mock/messages/{dummy_id}/status",
+        json={"status": "send_failed"},
+    )
+    assert unauth_status.status_code == 401
+
+    # Authenticate merchant
+    reg = client.post(
+        "/v1/auth/register",
+        json={
+            "email": f"wa_csrf_{uuid.uuid4().hex[:8]}@example.com",
+            "password": "Password123!",
+            "full_name": "CSRF Merchant",
+            "business_name": "CSRF Store",
+            "category": "Retail",
+        },
+    )
+    assert reg.status_code == 201
+
+    # Missing CSRF returns 403
+    no_csrf_sim = client.post(
+        "/v1/whatsapp/mock/simulate-inbound",
+        json={
+            "customer_wa_id": "919876543210",
+            "customer_name": "No CSRF User",
+            "message_text": "Missing header",
+        },
+    )
+    assert no_csrf_sim.status_code == 403
+
+    no_csrf_status = client.post(
+        f"/v1/whatsapp/mock/messages/{dummy_id}/status",
+        json={"status": "send_failed"},
+    )
+    assert no_csrf_status.status_code == 403
+
+
+def test_whatsapp_mock_status_update_and_tenant_isolation(client, monkeypatch, db_session):
+    monkeypatch.setattr(settings, "WHATSAPP_MODE", "mock")
+
+    # Register Merchant A
+    email_a = f"wa_merchant_a_{uuid.uuid4().hex[:8]}@example.com"
+    reg_a = client.post(
+        "/v1/auth/register",
+        json={
+            "email": email_a,
+            "password": "Password123!",
+            "full_name": "Merchant A",
+            "business_name": "Store A",
+            "category": "Retail",
+        },
+    )
+    assert reg_a.status_code == 201
+    csrf_a = reg_a.json()["csrf_token"]
+    merchant_a_id = uuid.UUID(reg_a.json()["merchant"]["id"])
+
+    # Register Merchant B
+    reg_b = client.post(
+        "/v1/auth/register",
+        json={
+            "email": f"wa_merchant_b_{uuid.uuid4().hex[:8]}@example.com",
+            "password": "Password123!",
+            "full_name": "Merchant B",
+            "business_name": "Store B",
+            "category": "Retail",
+        },
+    )
+    assert reg_b.status_code == 201
+    csrf_b = reg_b.json()["csrf_token"]
+
+    # Insert message for Merchant A
+    msg_a = WhatsAppMessage(
+        merchant_id=merchant_a_id,
+        phone_number_id="phone-a-1",
+        provider_message_id=f"wamid.sim_{uuid.uuid4().hex[:12]}",
+        customer_wa_id="919876543210",
+        customer_name="Customer A",
+        inbound_text="Hello from Store A",
+        suggested_reply="Reply for Store A",
+        status="sent",
+    )
+    db_session.add(msg_a)
+    db_session.commit()
+
+    # Merchant B (currently logged in) attempts to modify Merchant A's message status
+    unauthorized_status = client.post(
+        f"/v1/whatsapp/mock/messages/{msg_a.id}/status",
+        headers={"X-CSRF-Token": csrf_b},
+        json={"status": "send_failed", "last_error": "Tampering attempt"},
+    )
+    assert unauthorized_status.status_code == 404
+    assert unauthorized_status.json()["error"]["code"] == "WHATSAPP_MESSAGE_NOT_FOUND"
+
+    # Re-login as Merchant A
+    login_a = client.post(
+        "/v1/auth/login",
+        json={
+            "email": email_a,
+            "password": "Password123!",
+        },
+    )
+    assert login_a.status_code == 200
+    csrf_a_fresh = login_a.json()["csrf_token"]
+
+    # Merchant A transitions message to send_failed with last_error
+    status_failed = client.post(
+        f"/v1/whatsapp/mock/messages/{msg_a.id}/status",
+        headers={"X-CSRF-Token": csrf_a_fresh},
+        json={"status": "send_failed", "last_error": "Simulated timeout error"},
+    )
+    assert status_failed.status_code == 200
+    assert status_failed.json()["status"] == "send_failed"
+    assert status_failed.json()["last_error"] == "Simulated timeout error"
+
+    db_session.expire_all()
+    updated_msg = db_session.get(WhatsAppMessage, msg_a.id)
+    assert updated_msg.status == "send_failed"
+    assert updated_msg.last_error == "Simulated timeout error"
+
+    # Merchant A transitions message to send_ambiguous
+    status_ambiguous = client.post(
+        f"/v1/whatsapp/mock/messages/{msg_a.id}/status",
+        headers={"X-CSRF-Token": csrf_a_fresh},
+        json={"status": "send_ambiguous"},
+    )
+    assert status_ambiguous.status_code == 200
+    assert status_ambiguous.json()["status"] == "send_ambiguous"
+
+    # Reject invalid status transition
+    status_invalid = client.post(
+        f"/v1/whatsapp/mock/messages/{msg_a.id}/status",
+        headers={"X-CSRF-Token": csrf_a_fresh},
+        json={"status": "invalid_status_value"},
+    )
+    assert status_invalid.status_code == 422
+
+    # Reject attempt to fabricate 'sent' status directly via mock status endpoint
+    status_reject_sent = client.post(
+        f"/v1/whatsapp/mock/messages/{msg_a.id}/status",
+        headers={"X-CSRF-Token": csrf_a_fresh},
+        json={"status": "sent"},
+    )
+    assert status_reject_sent.status_code == 422
+
+    # Reject attempt to transition to 'needs_review' via mock status endpoint
+    status_reject_needs_review = client.post(
+        f"/v1/whatsapp/mock/messages/{msg_a.id}/status",
+        headers={"X-CSRF-Token": csrf_a_fresh},
+        json={"status": "needs_review"},
+    )
+    assert status_reject_needs_review.status_code == 422
+
+    # Insert an unapproved needs_review message for Merchant A
+    msg_unapproved = WhatsAppMessage(
+        merchant_id=merchant_a_id,
+        phone_number_id="phone-a-1",
+        provider_message_id=f"wamid.sim_{uuid.uuid4().hex[:12]}",
+        customer_wa_id="919876543210",
+        customer_name="Customer A",
+        inbound_text="Unapproved inquiry",
+        suggested_reply="Proposed draft",
+        status="needs_review",
+    )
+    db_session.add(msg_unapproved)
+    db_session.commit()
+
+    # Reject attempt to mutate delivery status on an unapproved needs_review message
+    status_reject_unapproved = client.post(
+        f"/v1/whatsapp/mock/messages/{msg_unapproved.id}/status",
+        headers={"X-CSRF-Token": csrf_a_fresh},
+        json={"status": "send_failed"},
+    )
+    assert status_reject_unapproved.status_code == 409
+    assert status_reject_unapproved.json()["error"]["code"] == "INVALID_MESSAGE_STATE"
+
+
+
+def test_whatsapp_webhook_still_requires_signature_in_mock_mode(client, monkeypatch):
+    monkeypatch.setattr(settings, "WHATSAPP_MODE", "mock")
+    monkeypatch.setattr(settings, "WHATSAPP_APP_SECRET", "test-app-secret")
+
+    # Missing signature returns 401
+    missing_sig = client.post(
+        "/v1/whatsapp/webhook",
+        json={"object": "whatsapp_business_account"},
+    )
+    assert missing_sig.status_code == 401
+
+    # Invalid signature returns 401
+    invalid_sig = client.post(
+        "/v1/whatsapp/webhook",
+        content=json.dumps({"object": "whatsapp_business_account"}),
+        headers={"X-Hub-Signature-256": "sha256=bad_signature"},
+    )
+    assert invalid_sig.status_code == 401

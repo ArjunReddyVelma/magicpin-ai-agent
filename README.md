@@ -95,17 +95,17 @@ Generic AI chatbots often fail in this domain because they hallucinate store pol
 
 | Feature Area | Status | Verification & Evidence |
 |---|---|---|
-| **PostgreSQL Persistence & Migrations** | Implemented | 7 database tables, Alembic migration history |
-| **Authentication & Session Security** | Implemented | 10 security tests passing; Argon2id + CSRF verified |
+| **PostgreSQL Persistence & Migrations** | Implemented | SQLAlchemy models, Alembic migration history, migration tests |
+| **Authentication & Session Security** | Implemented | Argon2id password hashing, session cookies, CSRF validation, tenant isolation tests |
 | **Merchant Context Management** | Implemented | CRUD API + ETag optimistic locking verified |
 | **Chat & Context Grounding** | Implemented | Prompt grounding, Groq provider, response validator |
 | **Failed-Turn Recovery & Idempotency** | Implemented | HTTP 502 recovery, retry message ID, idempotency keys |
 | **Chat-to-Action Generation** | Implemented | 7 integration tests passing; atomic row-locked transactions |
 | **Suggested Actions Review Queue** | Implemented | Paginated queue, state machine, zero side-effects verified |
-| **Frontend Single-Page Application** | Implemented | 42 unit & integration tests passing; clean production build |
-| **Full-Stack Integration Audit** | Implemented | 77 backend tests passing; 42 frontend tests passing |
+| **Frontend Single-Page Application** | Implemented | 84 frontend tests passing; lint and production build verified |
+| **Full-Stack Integration Audit** | Implemented | 205 backend tests passing (1 live smoke test skipped without API key); 84 frontend tests passing |
 | **Legal Pages (Privacy & Terms)** | Draft Implemented | Reachable in UI; operational disclosures with pending-review notices |
-| **Live Production Deployment** | Ready (Not Deployed)| Render blueprint configured (`render.yaml`); pending hosting provisioning |
+| **Live Production Deployment** | Deployed separately from this feature branch | Render frontend/backend links listed above; WhatsApp Mock Mode remains local/review only |
 
 ---
 
@@ -509,26 +509,30 @@ The repository includes comprehensive automated test suites for both backend and
 ```bash
 .venv/bin/pytest backend/tests -v
 ```
-**Results**: **77 passed** in ~4.4s
-- 7 tests in `backend/tests/api/test_chat_action_generation.py` (atomic action generation, retry idempotency, error rollbacks)
-- 6 tests in `backend/tests/api/test_actions.py` (review queue endpoints, status transitions, conflicts)
-- 34 tests in other API suites (auth, context CRUD, conversations, health)
-- 13 integration tests (repositories, database constraints)
-- 10 security tests (Argon2id, CSRF token verification, cross-tenant isolation)
-- 7 unit tests (response validation, prompt builder)
+**Results**: **205 passed, 1 skipped** (1 live Groq smoke test skipped when live API key is not configured)
+- Customer support web API and multi-tenant isolation tests
+- Rate limiting optimization functional index and ephemeral pruning tests
+- Chat action generation, review queue, and recovery idempotency tests
+- Context CRUD, optimistic concurrency, and conversation memory tests
+- Database isolation safeguards and deployment contract tests
+- WhatsApp Cloud API live and mock simulation tests
 
 ### Frontend Tests (Node.js Test Runner)
 ```bash
 npm --prefix frontend test
 ```
-**Results**: **42 passed** in ~130ms
+**Results**: **84 passed**
+- Customer Support public chat interface & session management (18 tests)
+- Merchant Support review inbox & human approval workflow (8 tests)
+- WhatsApp inbox & mock mode simulation controls (6 tests)
 - Actions Review Queue & Decision Recording (7 tests)
-- API Client & Error/CSRF Handling (4 tests)
 - Context Management & Optimistic Concurrency (6 tests)
 - Merchant Profile & Dashboard (5 tests)
 - Legal Pages Routing & Disclosures (5 tests)
 - Account Deletion & Session Logout (7 tests)
 - Conversations, Message Retries & Provider Failure Recovery (8 tests)
+- API Client, Base URL Resolution & Error/CSRF Handling (11 tests)
+- Deployment routing & static rewrite contracts (3 tests)
 
 ### Frontend Linting (ESLint)
 ```bash
@@ -544,20 +548,21 @@ npm --prefix frontend run build
 
 ### Continuous Integration (GitHub Actions)
 The repository defines an automated CI workflow in [`.github/workflows/ci.yml`](.github/workflows/ci.yml) that executes on all pushes and pull requests across `main`, `feature/**`, and `chore/**` branches:
-- **Backend Quality**: Runs with a dedicated PostgreSQL 16 service container, checks Alembic migrations from root, and executes the complete 77-test Pytest suite with `LLM_PROVIDER=mock`.
-- **Frontend Quality**: Sets up Node.js 20, runs ESLint (`npm run lint`), Node.js unit tests (`npm test`), and the production build (`npm run build`).
+- **Backend Quality**: Runs with a dedicated PostgreSQL 16 service container, checks Alembic migrations from root, and executes the backend test suite with `LLM_PROVIDER=mock`.
+- **Frontend Quality**: Sets up Node.js 22, runs ESLint (`npm run lint`), Node.js unit tests (`npm test`), and the production build (`npm run build`).
 
 ---
 
 ## 16. Current Limitations and Future Improvements
 
 ### Current Limitations
-1. **Synchronous Chat Turns**: Message turns execute as synchronous request/response HTTP cycles. Token streaming (Server-Sent Events / WebSockets) is not implemented in the current MVP.
-2. **Single User per Merchant**: The data model supports 1 user owning 1 merchant profile. Multi-user organizations and role-based access control (e.g., manager vs. support agent) are planned for a subsequent phase.
-3. **Single Provider Configuration**: Provider selection is configured globally via environment variables rather than on a per-merchant basis.
-4. **Relational Keyword Context Retrieval**: Context items are retrieved via active status and exact/metadata queries. High-dimensional vector embeddings and similarity search (e.g., `pgvector`) are not yet integrated.
-5. **No Outbound Messaging Automation**: In compliance with the Human-in-the-Loop review constraint, the system does not integrate external WhatsApp, SMS, or email dispatch APIs. Approvals record decisions only.
-6. **Default Branch History Alignment**: The GitHub repository's default branch `main` contains an unrelated Git history from an early single-directory prototype. The modular redesign resides on active feature branches (`origin/feature/frontend-core` containing merged PR #1 and `chore/repository-alignment-hardening`). Merging or reconciling the default branch is documented as an outstanding item pending project consensus.
+1. **WhatsApp Mock Mode is not deployed**: The mock inbox simulation exists on `feature/whatsapp-mock-mode` for local development/testing only. It records simulated delivery locally and does not contact Meta Graph API. Simulated delivery state is not proof of external delivery.
+2. **Synchronous Chat Turns**: Message turns execute as synchronous request/response HTTP cycles. Token streaming (Server-Sent Events / WebSockets) is not implemented in the current MVP.
+3. **Single User per Merchant**: The data model supports 1 user owning 1 merchant profile. Multi-user organizations and role-based access control (e.g., manager vs. support agent) are planned for a subsequent phase.
+4. **Single Provider Configuration**: Provider selection is configured globally via environment variables rather than on a per-merchant basis.
+5. **Relational Keyword Context Retrieval**: Context items are retrieved via active status and exact/metadata queries. High-dimensional vector embeddings and similarity search (e.g., `pgvector`) are not yet integrated.
+6. **WhatsApp Cloud API External Dispatch**: Outbound message sending requires valid Meta business credentials, phone number ID, and webhook subscription. In mock mode (`WHATSAPP_MODE=mock`), dispatch is simulated locally and Meta API is not contacted.
+7. **Default Branch History Alignment**: The GitHub repository's default branch `main` contains an unrelated Git history from an early single-directory prototype. Active development and integration occur on `feature/frontend-core`.
 
 ### Planned Improvements
 - Integration of `pgvector` for semantic context retrieval across extensive merchant catalogs.
@@ -601,7 +606,7 @@ Follow these exact steps to run the complete Magicpin AI Agent full-stack applic
 ```bash
 git clone https://github.com/ArjunReddyVelma/magicpin-ai-agent.git
 cd magicpin-ai-agent
-git checkout feature/chat-action-generation
+git checkout feature/whatsapp-mock-mode
 ```
 
 ### 2. Create and Activate the Python Virtual Environment

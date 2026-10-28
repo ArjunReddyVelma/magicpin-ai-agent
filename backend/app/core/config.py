@@ -1,7 +1,7 @@
 import os
 import urllib.parse
 from typing import List
-from pydantic import Field, field_validator, model_validator
+from pydantic import Field, field_validator, model_validator, AliasChoices
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -40,16 +40,25 @@ class Settings(BaseSettings):
 
     # LLM Settings
     LLM_PROVIDER: str = "groq"
-    LLM_API_KEY: str = ""
+    LLM_API_KEY: str = Field(default="", validation_alias=AliasChoices("LLM_API_KEY", "GROQ_API_KEY"))
     LLM_MODEL: str = "openai/gpt-oss-120b"
     LLM_TIMEOUT_SECONDS: int = 30
     LLM_MAX_RETRIES: int = 2
 
     # WhatsApp Cloud API configuration; supply real secrets only through environment variables.
+    WHATSAPP_MODE: str = "live"
     WHATSAPP_VERIFY_TOKEN: str = ""
     WHATSAPP_APP_SECRET: str = ""
     WHATSAPP_ENCRYPTION_KEY: str = ""
     WHATSAPP_GRAPH_API_VERSION: str = "v22.0"
+
+    @field_validator("WHATSAPP_MODE")
+    @classmethod
+    def validate_whatsapp_mode(cls, v: str) -> str:
+        mode = v.strip().lower()
+        if mode not in ("live", "mock"):
+            raise ValueError("WHATSAPP_MODE must be either 'live' or 'mock'.")
+        return mode
 
     # Frontend & CORS
     FRONTEND_ORIGIN: str = "http://localhost:5173"
@@ -86,6 +95,10 @@ class Settings(BaseSettings):
     COOKIE_NAME: str = "mp_session"
     RATE_LIMIT_LOGIN_MAX_ATTEMPTS: int = 5
     RATE_LIMIT_LOGIN_WINDOW_SECONDS: int = 900
+
+    # Reverse Proxy & Trusted Proxy Configuration
+    # Comma-separated list of IP addresses or CIDR blocks considered trusted proxies.
+    TRUSTED_PROXIES: str = "127.0.0.1,::1"
 
     # Observability
     LOG_LEVEL: str = "INFO"

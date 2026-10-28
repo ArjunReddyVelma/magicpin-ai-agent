@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { Activity, CheckCircle2, AlertCircle, RefreshCw } from 'lucide-react';
-import { HealthzResponse, ReadyzResponse } from '../types/api';
+import { api } from '../api/client';
 
 export const HealthIndicator: React.FC = () => {
   const [liveness, setLiveness] = useState<'checking' | 'healthy' | 'unhealthy'>('checking');
@@ -10,26 +10,16 @@ export const HealthIndicator: React.FC = () => {
   const checkHealth = async () => {
     try {
       setLiveness('checking');
-      const res = await fetch('/v1/healthz');
-      if (res.ok) {
-        const data: HealthzResponse = await res.json();
-        setLiveness(data.status === 'ok' ? 'healthy' : 'unhealthy');
-      } else {
-        setLiveness('unhealthy');
-      }
+      const data = await api.getHealthz();
+      setLiveness(data.status === 'ok' ? 'healthy' : 'unhealthy');
     } catch {
       setLiveness('unhealthy');
     }
 
     try {
       setReadiness('checking');
-      const res = await fetch('/v1/readyz');
-      if (res.ok) {
-        const data: ReadyzResponse = await res.json();
-        setReadiness(data.status === 'ready' ? 'ready' : 'unready');
-      } else {
-        setReadiness('unready');
-      }
+      const data = await api.getReadyz();
+      setReadiness(data.status === 'ready' ? 'ready' : 'unready');
     } catch {
       setReadiness('unready');
     }

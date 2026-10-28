@@ -4,7 +4,7 @@ from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
 from backend.app.main import app
-from backend.app.core.dependencies import get_llm_provider
+from backend.app.core.dependencies import get_llm_provider, get_db
 from backend.app.ai.mock_provider import MockLLMProvider
 
 
@@ -30,6 +30,12 @@ def test_production_multi_merchant_e2e_journey(db_session: Session):
     15. Log out and verify session invalidation and subsequent access denial.
     16. Verify important failure paths (validation error, conflict, CSRF missing/invalid, provider failure/retry).
     """
+    # Explicitly ensure get_db dependency uses the isolated transactional test session
+    def override_get_db():
+        yield db_session
+
+    app.dependency_overrides[get_db] = override_get_db
+
     # Create two separate client instances to maintain independent cookie jars
     client_a = TestClient(app)
     client_b = TestClient(app)
@@ -452,5 +458,6 @@ def test_production_multi_merchant_e2e_journey(db_session: Session):
     assert retry_turn.json()["user_message"]["status"] == "complete"
     assert retry_turn.json()["assistant_message"]["status"] == "complete"
 
-    # Clean up dependency overrides
-    app.dependency_overrides.clear()
+    # Clean up test-specific dependency overrides
+    app.dependency_overrides.pop(get_llm_provider, None)
+    app.dependency_overrides.pop(get_db, None)

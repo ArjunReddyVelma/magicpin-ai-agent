@@ -10,6 +10,7 @@ from backend.app.core.security import (
     hash_session_token,
     generate_csrf_token,
     login_rate_limiter,
+    get_client_ip,
 )
 from backend.app.core.dependencies import (
     get_db,
@@ -116,7 +117,7 @@ def login(
     db: Session = Depends(get_db),
 ) -> AuthResponse:
     # Rate limit check per IP and normalized email
-    client_ip = request.client.host if request.client else "unknown"
+    client_ip = get_client_ip(request)
     normalized_email = req.email.lower().strip()
     rate_key = f"{client_ip}:{normalized_email}"
 

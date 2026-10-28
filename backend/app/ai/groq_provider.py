@@ -45,7 +45,7 @@ class GroqProvider(LLMProvider):
     ) -> LLMResponse:
         if not self.api_key:
             raise LLMAuthenticationError(
-                "Groq API key is missing or not configured. Set LLM_API_KEY in your environment."
+                "Groq API key is missing or not configured. Set LLM_API_KEY (or GROQ_API_KEY) in your environment."
             )
 
         payload_messages = [{"role": "system", "content": system_prompt}]

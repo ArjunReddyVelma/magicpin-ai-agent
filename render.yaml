@@ -56,6 +56,8 @@ services:
         value: "5"
       - key: RATE_LIMIT_LOGIN_WINDOW_SECONDS
         value: "900"
+      - key: TRUSTED_PROXIES
+        value: "127.0.0.1,::1"  # Update with trusted upstream reverse proxy IPs (Render or Cloudflare) via Render dashboard
       - key: WHATSAPP_VERIFY_TOKEN
         sync: false
       - key: WHATSAPP_APP_SECRET

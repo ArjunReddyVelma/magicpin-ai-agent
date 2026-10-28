@@ -131,3 +131,44 @@ def test_alembic_normalize_db_url():
     assert normalize_database_url("postgres://user:pass@host:5432/db") == "postgresql+psycopg://user:pass@host:5432/db"
     assert normalize_database_url("postgresql://user:pass@host:5432/db") == "postgresql+psycopg://user:pass@host:5432/db"
     assert normalize_database_url("postgresql+psycopg://user:pass@host:5432/db") == "postgresql+psycopg://user:pass@host:5432/db"
+
+
+def test_whatsapp_mode_default_and_allowed_values():
+    # Declarative class default without ambient .env file is 'live'
+    default_cfg = Settings(_env_file=None)
+    assert default_cfg.WHATSAPP_MODE == "live"
+
+    mock_cfg = Settings(WHATSAPP_MODE="mock")
+    assert mock_cfg.WHATSAPP_MODE == "mock"
+
+    case_cfg = Settings(WHATSAPP_MODE="MOCK")
+    assert case_cfg.WHATSAPP_MODE == "mock"
+
+
+def test_whatsapp_mode_configuration_isolation(monkeypatch):
+    """Verifies that WHATSAPP_MODE environment variable explicitly overrides configuration."""
+    monkeypatch.setenv("WHATSAPP_MODE", "mock")
+    mock_cfg = Settings()
+    assert mock_cfg.WHATSAPP_MODE == "mock"
+
+    monkeypatch.setenv("WHATSAPP_MODE", "live")
+    live_cfg = Settings()
+    assert live_cfg.WHATSAPP_MODE == "live"
+
+
+def test_whatsapp_mode_rejects_invalid_values():
+    with pytest.raises(ValueError, match="WHATSAPP_MODE must be either 'live' or 'mock'"):
+        Settings(WHATSAPP_MODE="sandbox")
+
+
+def test_llm_api_key_alias_support(monkeypatch):
+    """Verifies that GROQ_API_KEY is accepted as a backward-compatible alias when LLM_API_KEY is unset."""
+    monkeypatch.delenv("LLM_API_KEY", raising=False)
+    monkeypatch.setenv("GROQ_API_KEY", "gsk_from_groq_alias_env")
+    cfg = Settings(_env_file=None)
+    assert cfg.LLM_API_KEY == "gsk_from_groq_alias_env"
+
+    # Direct LLM_API_KEY takes precedence
+    monkeypatch.setenv("LLM_API_KEY", "gsk_direct_canonical_env")
+    cfg2 = Settings(_env_file=None)
+    assert cfg2.LLM_API_KEY == "gsk_direct_canonical_env"
