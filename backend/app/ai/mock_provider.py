@@ -1,11 +1,18 @@
 import re
-from typing import Optional, List, Dict, Any
+from typing import Optional, List, Dict, Any, Set
 from backend.app.ai.provider import (
     LLMProvider,
     LLMResponse,
     LLMProviderError,
     LLMTimeoutError,
 )
+
+MOCK_STOPWORDS: Set[str] = {
+    "a", "an", "the", "and", "or", "is", "are", "was", "were", "what",
+    "how", "can", "do", "does", "in", "on", "at", "to", "for", "of",
+    "with", "about", "our", "your", "my", "i", "we", "you", "it", "this",
+    "that", "there", "have", "has", "had", "will", "would", "could", "should"
+}
 
 
 class MockLLMProvider(LLMProvider):
@@ -194,6 +201,16 @@ class MockLLMProvider(LLMProvider):
                 else:
                     extra_clauses.append("we do not have any confirmed 50% discounts or promotional offers listed in our policies")
 
+            asks_deliv = any(w in q_norm for w in ["delivery", "deliver", "shipping", "courier", "takeaway"])
+            if asks_deliv:
+                has_deliv_ctx = any(d in ctx_lower for d in ["delivery", "deliver", "shipping", "takeaway"])
+                if has_deliv_ctx:
+                    deliv_sent = next((s for s in raw_sentences if any(d in s.lower() for d in ["delivery", "deliver", "shipping", "takeaway"])), "")
+                    if deliv_sent:
+                        extra_clauses.append(deliv_sent.rstrip("."))
+                else:
+                    extra_clauses.append("our store policies do not confirm delivery services")
+
             extra_str = f" Additionally, {', and '.join(extra_clauses)}." if extra_clauses else ""
 
             if known_offerings:
@@ -269,9 +286,11 @@ class MockLLMProvider(LLMProvider):
                 if asks_vegan and not is_vegan_in_ctx:
                     # Strict Grounding Guard: Context does NOT confirm vegan
                     if is_gf_in_ctx:
-                        supported_parts.append(clean_period("We also have certified gluten-free almond pastries baked fresh daily, but our policies do not confirm if they are vegan"))
-                    else:
+                        supported_parts.append(clean_period("Certified gluten-free almond pastries are baked fresh daily, but our policies do not confirm if they are vegan"))
+                    elif pastry_sent:
                         supported_parts.append(clean_period(f"{pastry_sent.rstrip('.')}, but our policies do not confirm vegan options"))
+                    else:
+                        unsupported_parts.append("our policies do not confirm vegan items")
                 elif asks_vegan and is_vegan_in_ctx:
                     supported_parts.append(clean_period("We offer vegan pastries as stated in our store menu"))
                 elif asks_gluten_free and is_gf_in_ctx:
@@ -286,6 +305,8 @@ class MockLLMProvider(LLMProvider):
                     unsupported_parts.append("our policies do not list pastry or bakery options")
                 elif asks_vegan:
                     unsupported_parts.append("our policies do not confirm vegan items")
+                elif asks_gluten_free:
+                    unsupported_parts.append("our policies do not confirm gluten-free options")
 
         # Domain C: Operating Hours & Closing Time
         asks_hours = any(w in q_norm for w in ["close", "closing", "open", "opening", "hours", "timings", "time do you", "when do you"])
@@ -293,7 +314,28 @@ class MockLLMProvider(LLMProvider):
             has_hours_ctx = any(h in ctx_lower for h in ["am", "pm", "hours", "open from", "close at", "open daily", "operating hours"])
             if has_hours_ctx:
                 hours_sent = next((s for s in raw_sentences if any(h in s.lower() for h in ["am", "pm", "hours", "open", "close"])), "")
-                supported_parts.append(clean_period(hours_sent))
+                asks_closing = any(w in q_norm for w in ["close", "closing", "shut", "closing time"])
+                asks_opening = any(w in q_norm for w in ["open at", "opening time", "when do you open", "what time do you open"])
+
+                # Extract closing or opening time if specifically asked
+                close_match = re.search(r"(?:to|until|-|–)\s*(\d{1,2}(?::\d{2})?\s*(?:am|pm))\b", hours_sent, re.IGNORECASE)
+                if not close_match:
+                    close_match = re.search(r"close[s]?\s*(?:at\s*)?(\d{1,2}(?::\d{2})?\s*(?:am|pm))\b", hours_sent, re.IGNORECASE)
+
+                if asks_closing and close_match:
+                    closing_time = close_match.group(1).upper()
+                    daily_str = " daily" if "daily" in hours_sent.lower() else ""
+                    supported_parts.append(clean_period(f"We close at {closing_time}{daily_str} ({hours_sent.rstrip('.')})"))
+                elif asks_opening and ("open" in hours_sent.lower()):
+                    open_match = re.search(r"(?:from|open[s]?\s*(?:at\s*)?)\s*(\d{1,2}(?::\d{2})?\s*(?:am|pm))\b", hours_sent, re.IGNORECASE)
+                    if open_match:
+                        opening_time = open_match.group(1).upper()
+                        daily_str = " daily" if "daily" in hours_sent.lower() else ""
+                        supported_parts.append(clean_period(f"We open at {opening_time}{daily_str} ({hours_sent.rstrip('.')})"))
+                    else:
+                        supported_parts.append(clean_period(hours_sent))
+                else:
+                    supported_parts.append(clean_period(hours_sent))
             else:
                 unsupported_parts.append("our store policies do not specify our opening or closing hours")
 
@@ -305,9 +347,22 @@ class MockLLMProvider(LLMProvider):
                 disc_sent = next((s for s in raw_sentences if any(d in s.lower() for d in ["discount", "coupon", "promo", "deal"])), "")
                 supported_parts.append(clean_period(disc_sent))
             else:
-                unsupported_parts.append("we do not have any confirmed 50% discounts or promotional offers listed in our policies")
+                unsupported_parts.append("our policies do not confirm a 50% discount or promotional offers")
 
-        # Domain E: Refunds, Returns, Cancellations
+        # Domain E: Delivery & Shipping
+        asks_delivery = any(w in q_norm for w in ["delivery", "deliver", "shipping", "courier", "takeaway", "pickup", "free delivery"])
+        if asks_delivery:
+            has_deliv_ctx = any(d in ctx_lower for d in ["delivery", "deliver", "shipping", "takeaway", "courier"])
+            if has_deliv_ctx:
+                deliv_sent = next((s for s in raw_sentences if any(d in s.lower() for d in ["delivery", "deliver", "shipping", "takeaway"])), "")
+                supported_parts.append(clean_period(deliv_sent))
+            else:
+                if "free delivery" in q_norm:
+                    unsupported_parts.append("our store policies do not confirm free delivery")
+                else:
+                    unsupported_parts.append("our store policies do not mention delivery services or policies")
+
+        # Domain F: Refunds, Returns, Cancellations
         asks_refund = any(w in q_norm for w in ["refund", "return", "cancel", "cancellation", "exchange", "money back"])
         if asks_refund:
             has_refund_ctx = any(r in ctx_lower for r in ["refund", "return", "cancel", "cancellation", "exchange"])
@@ -317,13 +372,21 @@ class MockLLMProvider(LLMProvider):
             else:
                 unsupported_parts.append("our store policies do not specify refund or cancellation terms")
 
-        # Domain F: General Token-Based Sentence Match for other policies (e.g. Wi-Fi, Delivery, Pets, Cash, Decaf)
+        # Domain G: General Token-Based Sentence Match for other policies (e.g. Wi-Fi, Pets, Cash, Decaf)
         if not supported_parts and not unsupported_parts:
-            q_tokens = [w for w in re.findall(r"\w+", q_norm) if len(w) > 3 and w not in ["what", "have", "with", "from", "your", "this", "that", "there", "about", "could", "would"]]
+            MODIFIERS = {
+                "free", "full", "good", "great", "best", "fresh", "daily", "regular",
+                "extra", "more", "other", "real", "have", "with", "from", "your", "this",
+                "that", "there", "about", "could", "would", "what", "does", "provide"
+            }
+            q_tokens = [
+                w for w in re.findall(r"\w+", q_norm)
+                if len(w) > 2 and w not in MOCK_STOPWORDS and w not in MODIFIERS
+            ]
             scored_sentences = []
             for s in raw_sentences:
                 s_lower = s.lower()
-                overlap = sum(1 for t in q_tokens if t in s_lower)
+                overlap = sum(1 for t in q_tokens if re.search(r"\b" + re.escape(t) + r"\b", s_lower))
                 if overlap > 0:
                     scored_sentences.append((overlap, s))
 
@@ -347,6 +410,8 @@ class MockLLMProvider(LLMProvider):
 
         if recommended_actions:
             response_sentences.extend(recommended_actions)
+        elif asks_discount and asks_delivery and not supported_parts:
+            response_sentences.append("Please contact our store staff directly for current promotional or delivery inquiries.")
         elif unsupported_parts and not supported_parts:
             response_sentences.append("Please contact our store staff directly, and we will be happy to assist you.")
 

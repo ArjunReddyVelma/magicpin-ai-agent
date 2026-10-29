@@ -351,3 +351,148 @@ All hardware purchases come with a 30-day warranty against manufacturing defects
     c_lower = resp.content.lower()
     assert "do not specify our food and drink menu" in c_lower or "staff" in c_lower
     assert "tech gear hub" in c_lower
+
+
+# ===========================================================================
+# Multi-Context Acceptance Suite (Tests A through E)
+# ===========================================================================
+
+MULTI_CONTEXT_CAFE_PROMPT = """You are drafting a reviewable customer support reply for The Daily Roast Cafe.
+OPERATING RULES:
+1. This is a draft proposal for the merchant to review and edit. You cannot and will not send any message directly to the customer.
+2. Ground your reply strictly in the provided merchant context.
+3. Never invent prices, availability, delivery timelines, policies, or promises not in the context.
+4. If context does not have the answer, politely ask a clarifying question or advise contacting the store directly.
+5. Keep the reply concise (1-3 sentences) and courteous.
+
+<merchant_context>
+- Beverage Options: We offer oat milk and almond milk for all espresso drinks for an additional ₹30.
+- Bakery & Pastries: Certified gluten-free almond pastries are baked fresh daily. Customers should ask staff about current availability.
+- Operating Hours: Opening hours are 8:00 AM to 8:00 PM daily.
+</merchant_context>"""
+
+
+# ---------------------------------------------------------------------------
+# Test A: Single topic covered by one context item
+# ---------------------------------------------------------------------------
+def test_multicontext_test_a_single_topic_oat_milk():
+    provider = MockLLMProvider()
+    resp = provider.generate_response(
+        system_prompt=MULTI_CONTEXT_CAFE_PROMPT,
+        messages=[{"role": "user", "content": "Do you offer oat milk?"}],
+    )
+    content = resp.content
+    c_lower = content.lower()
+
+    # Grounded in beverage context
+    assert "oat milk" in c_lower
+    assert "espresso" in c_lower
+    assert "₹30" in content or "30" in content
+    # Does not inject unrelated policies
+    assert "pastries" not in c_lower
+    assert "gluten-free" not in c_lower
+    assert "8:00" not in c_lower
+    assert "hours" not in c_lower
+
+
+# ---------------------------------------------------------------------------
+# Test B: Multi-topic inquiry covering two context items
+# ---------------------------------------------------------------------------
+def test_multicontext_test_b_beverage_and_dietary_pastries():
+    provider = MockLLMProvider()
+    resp = provider.generate_response(
+        system_prompt=MULTI_CONTEXT_CAFE_PROMPT,
+        messages=[{"role": "user", "content": "Can I get an oat milk cappuccino and are your pastries vegan?"}],
+    )
+    content = resp.content
+    c_lower = content.lower()
+
+    # Part 1: Oat milk cappuccino & surcharge
+    assert "oat milk" in c_lower
+    assert "cappuccino" in c_lower or "espresso" in c_lower
+    assert "₹30" in content or "30" in content
+
+    # Part 2: Certified gluten-free almond pastries & dietary guardrail
+    assert "gluten-free" in c_lower or "almond pastries" in c_lower
+    assert "do not confirm" in c_lower or "not confirm" in c_lower or "not specified" in c_lower
+    assert not ("pastries are vegan" in c_lower and "not" not in c_lower)
+    assert "ask" in c_lower and "staff" in c_lower
+
+
+# ---------------------------------------------------------------------------
+# Test C: Multi-topic inquiry combining operating hours and product options
+# ---------------------------------------------------------------------------
+def test_multicontext_test_c_closing_hours_and_almond_milk_latte():
+    provider = MockLLMProvider()
+    query = "What time do you close, and can I get almond milk in my latte?"
+    resp = provider.generate_response(
+        system_prompt=MULTI_CONTEXT_CAFE_PROMPT,
+        messages=[{"role": "user", "content": query}],
+    )
+    content = resp.content
+    c_lower = content.lower()
+
+    # Topic 1: Closing time from operating hours context
+    assert "8:00 pm" in c_lower or "8:00" in c_lower
+    assert "close" in c_lower or "hours" in c_lower
+    assert "daily" in c_lower
+
+    # Topic 2: Almond milk for latte/espresso with ₹30 surcharge
+    assert "almond milk" in c_lower
+    assert "latte" in c_lower or "espresso" in c_lower
+    assert "₹30" in content or "30" in content
+
+    # Neither topic omitted
+    assert len(c_lower.split(".")) >= 2
+
+
+# ---------------------------------------------------------------------------
+# Test D: Unsupported claims and non-existent discounts + delivery
+# ---------------------------------------------------------------------------
+def test_multicontext_test_d_unsupported_discount_and_delivery():
+    provider = MockLLMProvider()
+    query = "Do you have a 50% discount and free delivery?"
+    resp = provider.generate_response(
+        system_prompt=MULTI_CONTEXT_CAFE_PROMPT,
+        messages=[{"role": "user", "content": query}],
+    )
+    content = resp.content
+    c_lower = content.lower()
+
+    # Grounded: neither offer is invented or assumed
+    assert not ("we offer 50%" in c_lower)
+    assert not ("free delivery is available" in c_lower)
+
+    # Clearly explains context does not confirm 50% discount
+    assert "50%" in c_lower or "discount" in c_lower
+    assert "do not confirm" in c_lower or "not confirm" in c_lower or "do not have" in c_lower
+
+    # Clearly explains context does not confirm free delivery
+    assert "free delivery" in c_lower or "delivery" in c_lower
+
+    # Directs to store staff
+    assert "staff" in c_lower
+
+
+# ---------------------------------------------------------------------------
+# Test E: Missing context / unconfirmed topic handling
+# ---------------------------------------------------------------------------
+def test_multicontext_test_e_unmentioned_wifi_and_parking():
+    provider = MockLLMProvider()
+    query = "Do you have free Wi-Fi and parking?"
+    resp = provider.generate_response(
+        system_prompt=MULTI_CONTEXT_CAFE_PROMPT,
+        messages=[{"role": "user", "content": query}],
+    )
+    content = resp.content
+    c_lower = content.lower()
+
+    # Acknowledges topic is not covered in store policies
+    assert "not covered in our store policies" in c_lower or "do not currently have" in c_lower or "do not specify" in c_lower
+
+    # Does not fabricate Wi-Fi or parking
+    assert "free wi-fi is" not in c_lower
+    assert "parking is available" not in c_lower
+
+    # Directs customer to staff
+    assert "staff" in c_lower
