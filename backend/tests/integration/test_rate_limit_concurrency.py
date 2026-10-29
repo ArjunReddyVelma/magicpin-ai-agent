@@ -91,11 +91,12 @@ def test_atomic_batch_commit_persists_both_events_in_postgresql():
         _cleanup_audit_keys([ip_key, session_key])
 
 
-def test_atomic_rollback_on_failure_leaves_zero_events_in_postgresql():
+def test_atomic_rollback_on_failure_leaves_zero_events_in_postgresql(monkeypatch):
     """
-    Verifies that if an error occurs during submission, db.rollback() ensures
-    neither the IP event nor the session event is committed to PostgreSQL.
+    Verifies that if an error occurs during submission (e.g. database commit failure),
+    the transaction is rolled back and zero partial events remain in PostgreSQL.
     """
+    monkeypatch.setattr(settings, "APP_ENV", "testing")
     limiter = PublicSupportRateLimiter()
     test_ip = f"10.250.2.{uuid.uuid4().hex[:4]}"
     session_id = uuid.uuid4()
@@ -103,27 +104,44 @@ def test_atomic_rollback_on_failure_leaves_zero_events_in_postgresql():
     session_key = f"support_msg_session:{session_id}"
 
     db: Session = TestingSessionLocal()
+    original_commit = db.commit
+
+    def failing_commit():
+        raise OperationalError(
+            "Simulated database failure during commit",
+            params=None,
+            orig=Exception("Commit failed"),
+        )
+
+    db.commit = failing_commit
+
     try:
-        # Pre-check zero events
-        count = db.query(AuditEvent).filter(
-            AuditEvent.metadata_json["key"].astext.in_([ip_key, session_key])
-        ).count()
-        assert count == 0
-
-        # Simulate a transaction failure midway by adding an invalid object or rollback
-        db.begin_nested()
+        # Pre-check zero events in PostgreSQL using a clean session
+        check_db: Session = TestingSessionLocal()
         try:
-            # We record but immediately force rollback
-            limiter._record_event(ip_key, "support.message_submit_ip", 900, db)
-            raise RuntimeError("Simulated mid-transaction failure")
-        except RuntimeError:
-            db.rollback()
+            assert check_db.query(AuditEvent).filter(
+                AuditEvent.metadata_json["key"].astext.in_([ip_key, session_key])
+            ).count() == 0
+        finally:
+            check_db.close()
 
-        # Verify nothing persisted
-        count_after = db.query(AuditEvent).filter(
-            AuditEvent.metadata_json["key"].astext.in_([ip_key, session_key])
-        ).count()
-        assert count_after == 0
+        # Execute submission with failing commit; verify it raises OperationalError
+        with pytest.raises(OperationalError):
+            limiter.record_message_submission(test_ip, session_id, db=db)
+
+        # Restore original commit on the session
+        db.commit = original_commit
+
+        # Query database using a fresh transaction/session to confirm zero partial events remain
+        verify_db: Session = TestingSessionLocal()
+        try:
+            count_after = verify_db.query(AuditEvent).filter(
+                AuditEvent.target_type == "public_support",
+                AuditEvent.metadata_json["key"].astext.in_([ip_key, session_key]),
+            ).count()
+            assert count_after == 0, f"Expected 0 events after rollback, found {count_after}"
+        finally:
+            verify_db.close()
     finally:
         db.close()
         _cleanup_audit_keys([ip_key, session_key])
@@ -379,7 +397,7 @@ def test_lock_timeout_handling_fails_closed_in_production(monkeypatch):
             limiter.record_message_submission(test_ip, session_id, db=worker_db)
 
         assert exc_info.value.status_code == 503
-        assert exc_info.value.detail["code"] == "DEPENDENCY_UNAVAILABLE"
+        assert exc_info.value.detail["error"]["code"] == "DEPENDENCY_UNAVAILABLE"
     finally:
         worker_db.close()
         holder_db.rollback()
