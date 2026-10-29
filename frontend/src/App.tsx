@@ -64,7 +64,8 @@ function AppShell() {
     if (convId) {
       setSelectedConvId(convId);
     }
-    setActiveTab(tab);
+    const normalizedTab = tab.replace(/^\//, '');
+    setActiveTab(normalizedTab);
   };
 
   return (
@@ -80,7 +81,7 @@ function AppShell() {
 
         {activeTab === 'actions' && <ActionsPage />}
 
-        {activeTab === 'support' && <SupportInboxPage />}
+        {(activeTab === 'support' || activeTab === '/support') && <SupportInboxPage />}
 
         {activeTab === 'whatsapp' && <WhatsAppInboxPage />}
 

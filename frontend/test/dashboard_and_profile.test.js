@@ -201,15 +201,59 @@ test('Merchant profile validation: rejects empty business name and surfaces erro
   assert.strictEqual(validateProfileInput('Valid Business Name').error, null);
 });
 
-test('Dashboard displays configured AI model openai/gpt-oss-120b and no stale model', () => {
+test('Dashboard layout: technical cards (AI Model and Backend Health) are removed from dashboard', () => {
   const fullPath = path.resolve(__dirname, '..', 'src/pages/DashboardPage.tsx');
   const source = fs.readFileSync(fullPath, 'utf-8');
+
+  // Technical cards must be absent from the merchant dashboard
   assert.ok(
-    source.includes('openai/gpt-oss-120b'),
-    'Dashboard must display openai/gpt-oss-120b'
+    !source.includes('AI Model & Grounding'),
+    'Dashboard must not contain AI Model & Grounding card'
   );
   assert.ok(
-    !source.includes('llama-3.3-70b'),
-    'Dashboard must not contain stale llama-3.3-70b model name'
+    !source.includes('openai/gpt-oss-120b'),
+    'Dashboard must not contain AI model identifier'
   );
+  assert.ok(
+    !source.includes('Backend Service Status'),
+    'Dashboard must not contain Backend Service Status card'
+  );
+  assert.ok(
+    !source.includes('<HealthIndicator'),
+    'Dashboard must not render HealthIndicator component'
+  );
+
+  // Essential business sections must be preserved
+  assert.ok(source.includes('Business Context'), 'Business Context metric must be preserved');
+  assert.ok(source.includes('Total Conversations'), 'Total Conversations metric must be preserved');
+  assert.ok(source.includes('Configured Business Context'), 'Configured Business Context section must be preserved');
+  assert.ok(source.includes('Recent Conversations'), 'Recent Conversations section must be preserved');
+  assert.ok(source.includes('MerchantProfileCard'), 'MerchantProfileCard must be preserved');
+  assert.ok(source.includes('sm:grid-cols-2'), 'Metrics grid must expand to sm:grid-cols-2');
+});
+
+test('Dashboard navigation: Customer Support link is visible and navigates to support route', () => {
+  const fullPath = path.resolve(__dirname, '..', 'src/pages/DashboardPage.tsx');
+  const source = fs.readFileSync(fullPath, 'utf-8');
+
+  // Visible Customer Support link
+  assert.ok(
+    source.includes('Customer Support'),
+    'Dashboard must include visible Customer Support navigation link'
+  );
+  assert.ok(
+    source.includes("onNavigate('support')"),
+    'Customer Support link must trigger navigation to support route'
+  );
+
+  // Navigation state machine transition
+  let activeTab = 'dashboard';
+  const handleNavigate = (tab) => {
+    const normalizedTab = tab.replace(/^\//, '');
+    activeTab = normalizedTab;
+  };
+
+  assert.strictEqual(activeTab, 'dashboard');
+  handleNavigate('support');
+  assert.strictEqual(activeTab, 'support', 'Navigating to support must transition activeTab to support');
 });

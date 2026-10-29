@@ -1,5 +1,4 @@
 import React, { useEffect, useState, useCallback } from 'react';
-import { HealthIndicator } from '../components/HealthIndicator';
 import { MerchantProfileCard } from '../components/MerchantProfileCard';
 import { useAuth } from '../context/AuthContext';
 import { api, ApiClientError } from '../api/client';
@@ -12,10 +11,9 @@ import {
   RefreshCw,
   ArrowRight,
   BookOpen,
-  Cpu,
-  CheckCircle2,
   Clock,
   Layers,
+  LifeBuoy,
 } from 'lucide-react';
 
 interface DashboardPageProps {
@@ -113,7 +111,14 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate }) => {
             Grounded AI support assistance configured with your merchant policies, FAQs, and business context.
           </p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            onClick={() => onNavigate('support')}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded border border-surface-300 bg-white text-surface-900 hover:bg-surface-50 shadow-sm transition-colors"
+          >
+            <LifeBuoy className="w-3.5 h-3.5 text-emerald-700" />
+            Customer Support
+          </button>
           <button
             onClick={() => onNavigate('context')}
             className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded border border-surface-300 bg-white text-surface-900 hover:bg-surface-50 shadow-sm transition-colors"
@@ -132,7 +137,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate }) => {
       </div>
 
       {/* Metrics Row (Real Data Only) */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         {/* Metric 1: Context Items */}
         <div className="bg-white border border-surface-200 rounded p-4 shadow-sm flex items-start justify-between">
           <div>
@@ -162,23 +167,6 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate }) => {
           </div>
           <div className="p-2 rounded bg-surface-50 border border-surface-100 text-emerald-700">
             <MessageSquare className="w-5 h-5" />
-          </div>
-        </div>
-
-        {/* Metric 3: AI Service Status */}
-        <div className="bg-white border border-surface-200 rounded p-4 shadow-sm flex items-start justify-between">
-          <div>
-            <div className="text-xs font-medium text-surface-800">AI Model & Grounding</div>
-            <div className="text-sm font-semibold text-surface-900 mt-1.5 flex items-center gap-1.5">
-              <CheckCircle2 className="w-4 h-4 text-emerald-600" />
-              <span>openai/gpt-oss-120b</span>
-            </div>
-            <div className="text-[11px] text-surface-800 mt-1">
-              Grounded via PostgreSQL context
-            </div>
-          </div>
-          <div className="p-2 rounded bg-surface-50 border border-surface-100 text-emerald-700">
-            <Cpu className="w-5 h-5" />
           </div>
         </div>
       </div>
@@ -384,10 +372,9 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate }) => {
           </div>
         </div>
 
-        {/* Right Column (1/3 width on desktop): Merchant Profile & Health Status */}
+        {/* Right Column (1/3 width on desktop): Merchant Profile */}
         <div className="space-y-6">
           <MerchantProfileCard profile={merchant} />
-          <HealthIndicator />
         </div>
       </div>
     </div>
