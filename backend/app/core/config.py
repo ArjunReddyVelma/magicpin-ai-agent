@@ -40,8 +40,10 @@ class Settings(BaseSettings):
 
     # LLM Settings
     LLM_PROVIDER: str = "groq"
-    LLM_API_KEY: str = Field(default="", validation_alias=AliasChoices("LLM_API_KEY", "GROQ_API_KEY"))
+    LLM_API_KEY: str = Field(default="", validation_alias=AliasChoices("LLM_API_KEY", "GROQ_API_KEY", "XAI_API_KEY"))
+    XAI_API_KEY: str = Field(default="", validation_alias=AliasChoices("XAI_API_KEY", "GROK_API_KEY"))
     LLM_MODEL: str = "openai/gpt-oss-120b"
+    XAI_MODEL: str = "grok-2-latest"
     LLM_TIMEOUT_SECONDS: int = 30
     LLM_MAX_RETRIES: int = 2
 
@@ -141,7 +143,8 @@ class Settings(BaseSettings):
                 )
 
             if self.LLM_PROVIDER != "mock":
-                if not self.LLM_API_KEY or self.LLM_API_KEY.strip() in ("", "your_groq_api_key_here"):
+                effective_key = (self.XAI_API_KEY or self.LLM_API_KEY) if self.LLM_PROVIDER in ("grok", "xai") else self.LLM_API_KEY
+                if not effective_key or effective_key.strip() in ("", "your_groq_api_key_here", "your_xai_api_key_here"):
                     raise ValueError(
                         f"LLM_API_KEY is required in production when LLM_PROVIDER is '{self.LLM_PROVIDER}'."
                     )

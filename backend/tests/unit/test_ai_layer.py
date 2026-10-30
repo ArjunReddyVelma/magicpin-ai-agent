@@ -11,6 +11,8 @@ from backend.app.ai.provider import (
 )
 from backend.app.ai.mock_provider import MockLLMProvider
 from backend.app.ai.groq_provider import GroqProvider
+from backend.app.ai.grok_provider import GrokProvider
+from backend.app.core.dependencies import get_llm_provider
 from backend.app.ai.prompt_builder import PromptBuilder
 from backend.app.ai.response_validator import ResponseValidator
 from backend.app.ai.context_retriever import ContextRetriever
@@ -178,6 +180,106 @@ def test_groq_provider_default_model_alignment():
     """
     provider = GroqProvider(api_key="gsk_test")
     assert provider.model == "openai/gpt-oss-120b"
+
+
+def test_grok_provider_missing_key():
+    provider = GrokProvider(api_key="")
+    with pytest.raises(LLMAuthenticationError) as exc_info:
+        provider.generate_response("Sys", [{"role": "user", "content": "Hi"}])
+    assert "xAI Grok API key is missing" in str(exc_info.value)
+
+
+@patch("httpx.Client")
+def test_grok_provider_success(mock_client_cls):
+    mock_client = MagicMock()
+    mock_client_cls.return_value.__enter__.return_value = mock_client
+
+    mock_resp = MagicMock()
+    mock_resp.status_code = 200
+    mock_resp.json.return_value = {
+        "id": "chatcmpl-grok-123",
+        "choices": [{"message": {"content": "This is a Grok response"}}],
+        "usage": {"prompt_tokens": 42, "completion_tokens": 18},
+    }
+    mock_client.post.return_value = mock_resp
+
+    provider = GrokProvider(api_key="xai-valid-key")
+    res = provider.generate_response("System prompt", [{"role": "user", "content": "Hello"}])
+
+    assert res.content == "This is a Grok response"
+    assert res.provider == "grok"
+    assert res.model == "grok-2-latest"
+    assert res.input_tokens == 42
+    assert res.output_tokens == 18
+    assert res.raw_metadata == {"xai_id": "chatcmpl-grok-123"}
+
+
+@patch("httpx.Client")
+def test_grok_provider_error_payload_extraction(mock_client_cls):
+    mock_client = MagicMock()
+    mock_client_cls.return_value.__enter__.return_value = mock_client
+
+    mock_resp = MagicMock()
+    mock_resp.status_code = 404
+    mock_resp.json.return_value = {
+        "error": {
+            "message": "The model `grok-invalid` does not exist.",
+            "type": "invalid_request_error",
+        }
+    }
+    mock_client.post.return_value = mock_resp
+
+    provider = GrokProvider(api_key="xai-valid-key", model="grok-invalid")
+    with pytest.raises(LLMProviderError) as exc_info:
+        provider.generate_response("System prompt", [{"role": "user", "content": "Hello"}])
+
+    assert exc_info.value.status_code == 502
+    assert exc_info.value.retryable is False
+    assert "HTTP 404" in str(exc_info.value)
+    assert "The model `grok-invalid` does not exist" in str(exc_info.value)
+
+
+@patch("httpx.Client")
+def test_grok_provider_auth_error(mock_client_cls):
+    mock_client = MagicMock()
+    mock_client_cls.return_value.__enter__.return_value = mock_client
+
+    mock_resp = MagicMock()
+    mock_resp.status_code = 401
+    mock_client.post.return_value = mock_resp
+
+    provider = GrokProvider(api_key="xai-invalid-key")
+    with pytest.raises(LLMAuthenticationError) as exc_info:
+        provider.generate_response("System prompt", [{"role": "user", "content": "Hello"}])
+    assert "authentication failed" in str(exc_info.value)
+
+
+@patch("httpx.Client")
+def test_grok_provider_rate_limit_error(mock_client_cls):
+    mock_client = MagicMock()
+    mock_client_cls.return_value.__enter__.return_value = mock_client
+
+    mock_resp = MagicMock()
+    mock_resp.status_code = 429
+    mock_client.post.return_value = mock_resp
+
+    provider = GrokProvider(api_key="xai-valid-key")
+    with pytest.raises(LLMRateLimitError) as exc_info:
+        provider.generate_response("System prompt", [{"role": "user", "content": "Hello"}])
+    assert "rate limit exceeded" in str(exc_info.value)
+
+
+def test_grok_provider_default_model_alignment():
+    provider = GrokProvider(api_key="xai-test")
+    assert provider.model == "grok-2-latest"
+
+
+def test_get_llm_provider_resolves_grok(monkeypatch):
+    from backend.app.core.config import settings
+    monkeypatch.setattr(settings, "LLM_PROVIDER", "grok")
+    provider = get_llm_provider()
+    assert isinstance(provider, GrokProvider)
+    assert provider.provider_name == "grok"
 
 
 def test_chat_service_draft_eligibility_classification():

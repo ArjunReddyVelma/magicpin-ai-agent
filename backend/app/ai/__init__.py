@@ -7,6 +7,7 @@ from backend.app.ai.provider import (
     LLMRateLimitError,
 )
 from backend.app.ai.groq_provider import GroqProvider
+from backend.app.ai.grok_provider import GrokProvider
 from backend.app.ai.mock_provider import MockLLMProvider
 from backend.app.ai.prompt_builder import PromptBuilder
 from backend.app.ai.context_retriever import ContextRetriever
@@ -20,6 +21,7 @@ __all__ = [
     "LLMAuthenticationError",
     "LLMRateLimitError",
     "GroqProvider",
+    "GrokProvider",
     "MockLLMProvider",
     "PromptBuilder",
     "ContextRetriever",

@@ -155,12 +155,16 @@ def verify_csrf(
 
 from backend.app.ai.provider import LLMProvider
 from backend.app.ai.groq_provider import GroqProvider
+from backend.app.ai.grok_provider import GrokProvider
 from backend.app.ai.mock_provider import MockLLMProvider
 
 
 def get_llm_provider() -> LLMProvider:
     """Provides the configured LLM provider instance."""
-    if settings.LLM_PROVIDER == "mock":
+    provider_name = (settings.LLM_PROVIDER or "").strip().lower()
+    if provider_name == "mock":
         return MockLLMProvider()
+    if provider_name in ("grok", "xai"):
+        return GrokProvider()
     return GroqProvider()
 

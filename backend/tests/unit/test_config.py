@@ -4,7 +4,7 @@ from backend.app.db.session import engine
 
 
 def test_default_settings():
-    settings = Settings()
+    settings = Settings(_env_file=None)
     assert settings.APP_NAME == "Magicpin AI Agent"
     assert settings.API_V1_STR == "/v1"
     assert settings.LLM_PROVIDER == "groq"
