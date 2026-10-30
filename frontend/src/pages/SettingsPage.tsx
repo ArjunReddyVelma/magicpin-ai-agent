@@ -169,13 +169,14 @@ export const SettingsPage: React.FC = () => {
               onClick={handleLogout}
               disabled={isLoggingOut}
               className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-surface-800 hover:text-surface-900 bg-surface-50 hover:bg-surface-100 border border-surface-300 rounded transition-colors shadow-2xs"
+              title="Sign Out"
             >
               {isLoggingOut ? (
                 <Loader2 className="w-3.5 h-3.5 animate-spin" />
               ) : (
                 <LogOut className="w-3.5 h-3.5" />
               )}
-              <span>Sign Out Session</span>
+              <span>Sign Out</span>
             </button>
           </div>
         </div>

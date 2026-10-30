@@ -1,5 +1,5 @@
 import React from 'react';
-import { Store, MessageSquare, BookOpen, CheckSquare, Settings, LogOut, ShieldCheck, MessageCircle, LifeBuoy } from 'lucide-react';
+import { Store, MessageSquare, BookOpen, CheckSquare, Settings, LifeBuoy } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 
 interface NavbarProps {
@@ -8,7 +8,7 @@ interface NavbarProps {
 }
 
 export const Navbar: React.FC<NavbarProps> = ({ activeTab, onTabChange }) => {
-  const { user, merchant, logout } = useAuth();
+  const { user, merchant } = useAuth();
 
   const navItems = [
     { id: 'dashboard', label: 'Dashboard', icon: Store },
@@ -16,7 +16,6 @@ export const Navbar: React.FC<NavbarProps> = ({ activeTab, onTabChange }) => {
     { id: 'context', label: 'Merchant Context', icon: BookOpen },
     { id: 'actions', label: 'Drafts & Actions', icon: CheckSquare },
     { id: 'support', label: 'Support Inbox', icon: LifeBuoy },
-    { id: 'whatsapp', label: 'WhatsApp Inbox', icon: MessageCircle },
     { id: 'settings', label: 'Settings', icon: Settings },
   ];
 
@@ -45,7 +44,7 @@ export const Navbar: React.FC<NavbarProps> = ({ activeTab, onTabChange }) => {
             </div>
           </div>
 
-          <nav className="flex space-x-1" aria-label="Main Navigation">
+          <nav className="flex items-center space-x-1" aria-label="Main Navigation">
             {navItems.map((item) => {
               const Icon = item.icon;
               const isActive = activeTab === item.id;
@@ -65,21 +64,6 @@ export const Navbar: React.FC<NavbarProps> = ({ activeTab, onTabChange }) => {
               );
             })}
           </nav>
-
-          <div className="flex items-center gap-4">
-            <div className="hidden md:flex items-center gap-1.5 text-xs text-slate-300">
-              <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
-              <span className="text-[11px]">Protected Session</span>
-            </div>
-            <button
-              onClick={logout}
-              title="Sign Out"
-              className="flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium rounded border border-slate-700 bg-slate-800/80 text-slate-300 hover:text-white hover:bg-slate-700 transition-colors"
-            >
-              <LogOut className="w-3.5 h-3.5 text-slate-400" />
-              <span>Sign Out</span>
-            </button>
-          </div>
         </div>
       </div>
     </header>
