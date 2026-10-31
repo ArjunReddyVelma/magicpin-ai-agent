@@ -45,6 +45,18 @@ def create_customer_session(
     request: Request,
     db: Session = Depends(get_db),
 ) -> CreateCustomerSessionResponse:
+    # -------------------------------------------------------------------------
+    # Transaction Boundary Rationale (Session Creation):
+    # 1. support_rate_limiter.check_session_creation: Fast-path non-locking check.
+    # 2. support_rate_limiter.record_session_creation: Acquires transaction-scoped
+    #    PostgreSQL advisory lock, re-evaluates quota, inserts AuditEvent, and commits.
+    #    Advisory locks are transaction-scoped and released when the rate-limit
+    #    transaction commits or rolls back. Completing this transaction before downstream
+    #    merchant lookup and token hashing minimizes lock holding time; actual lock
+    #    duration depends on database execution and contention.
+    # 3. service.create_customer_session: Executes business transaction (merchant
+    #    validation, session token generation, cryptographic hashing, and persistence).
+    # -------------------------------------------------------------------------
     client_ip = get_client_ip(request)
     support_rate_limiter.check_session_creation(client_ip, db=db)
     support_rate_limiter.record_session_creation(client_ip, db=db)
@@ -77,6 +89,32 @@ def submit_customer_inquiry(
     db: Session = Depends(get_db),
     llm_provider: LLMProvider = Depends(get_llm_provider),
 ) -> CustomerInquiryResponse:
+    # -------------------------------------------------------------------------
+    # Transaction Boundary Rationale (Message Submission):
+    # 1. support_rate_limiter.check_message_submission: Fast-path non-locking quota
+    #    pre-check to quickly reject saturated IPs/sessions with HTTP 429.
+    # 2. service.verify_customer_session: Authenticates customer token and verifies
+    #    active session status. Must run BEFORE consuming quota to prevent invalid
+    #    or unauthenticated requests from exhausting legitimate session quotas.
+    # 3. support_rate_limiter.record_message_submission: Acquires bounded transaction-scoped
+    #    PostgreSQL advisory locks (sorted ascending to prevent deadlocks), verifies
+    #    authoritative counts inside lock, batch-inserts AuditEvents, and COMMITS immediately.
+    #    - Concurrency Rationale: Advisory locks are transaction-scoped and released
+    #      when the rate-limit transaction commits or rolls back. Completing this
+    #      transaction before downstream inquiry persistence and LLM generation ensures
+    #      locks are not held across external API calls, preventing lock wait timeouts
+    #      (3.0s) and thread starvation; actual lock duration depends on database
+    #      execution and contention.
+    #    - Security Rationale: Quota consumption is durable prior to business processing.
+    #      A downstream failure or malformed payload cannot be exploited to retry
+    #      indefinitely without consuming quota.
+    #    - Session Expiration Safety: The commit expires SQLAlchemy's identity map.
+    #      Subsequent access to session attributes safely re-queries via the open db
+    #      connection, and service.submit_customer_inquiry issues an explicit db.refresh(msg)
+    #      guaranteeing all response attributes are loaded without lazy-loading errors.
+    # 4. service.submit_customer_inquiry: Persists the inquiry first (commit=True),
+    #    then executes grounded AI draft generation and commits the draft/error state.
+    # -------------------------------------------------------------------------
     client_ip = get_client_ip(request)
     support_rate_limiter.check_message_submission(client_ip, session_id, db=db)
 
