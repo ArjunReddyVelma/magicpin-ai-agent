@@ -177,3 +177,69 @@ def test_recheck_inside_lock_raises_429_if_concurrency_exceeded():
     mock_db.add_all.assert_not_called()
     mock_db.commit.assert_not_called()
     mock_db.rollback.assert_called_once()
+
+
+def test_session_creation_atomic_persistence():
+    """
+    Unit test: Verifies that record_session_creation prepares the session audit event,
+    adds it to db, and executes db.commit().
+    """
+    limiter = PublicSupportRateLimiter(session_create_limit=5)
+    mock_db = MagicMock()
+    mock_db.bind = None
+    mock_db.scalar.return_value = 0
+
+    client_ip = "192.168.1.75"
+    limiter.record_session_creation(client_ip, db=mock_db)
+
+    mock_db.add.assert_called_once()
+    added_event = mock_db.add.call_args[0][0]
+    assert isinstance(added_event, AuditEvent)
+    assert added_event.event_type == "support.session_create"
+    assert added_event.metadata_json["key"] == f"support_session:{client_ip}"
+    assert added_event.metadata_json["ip"] == client_ip
+
+    mock_db.commit.assert_called_once()
+    mock_db.rollback.assert_not_called()
+
+
+def test_session_creation_rollback_on_commit_failure(monkeypatch):
+    """
+    Unit test: Verifies that if db.commit() raises an exception during session creation
+    event recording, db.rollback() is invoked and the transaction is cleanly aborted.
+    """
+    monkeypatch.setattr(settings, "APP_ENV", "testing")
+
+    limiter = PublicSupportRateLimiter(session_create_limit=5)
+    mock_db = MagicMock()
+    mock_db.bind = None
+    mock_db.scalar.return_value = 0
+    mock_db.commit.side_effect = OperationalError("DB Lost", params=None, orig=Exception("lost"))
+
+    client_ip = "192.168.1.75"
+    with pytest.raises(OperationalError):
+        limiter.record_session_creation(client_ip, db=mock_db)
+
+    mock_db.rollback.assert_called_once()
+
+
+def test_session_creation_recheck_inside_lock_raises_429():
+    """
+    Unit test: Verifies that if concurrent requests consume session creation quota while
+    waiting for lock, the re-check inside record_session_creation raises HTTP 429
+    and executes rollback without committing.
+    """
+    limiter = PublicSupportRateLimiter(session_create_limit=2)
+    mock_db = MagicMock()
+    mock_db.bind = None
+    mock_db.scalar.return_value = 2
+
+    client_ip = "192.168.1.75"
+    with pytest.raises(HTTPException) as exc_info:
+        limiter.record_session_creation(client_ip, db=mock_db)
+
+    assert exc_info.value.status_code == 429
+    assert exc_info.value.detail["error"]["code"] == "RATE_LIMIT_EXCEEDED"
+    mock_db.add.assert_not_called()
+    mock_db.commit.assert_not_called()
+    mock_db.rollback.assert_called_once()

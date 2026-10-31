@@ -234,6 +234,11 @@ class PublicSupportRateLimiter:
     def record_session_creation(
         self, client_ip: str, db: Optional[Session] = None
     ) -> None:
+        """
+        Records a customer support session creation under a transaction-scoped advisory lock.
+        Authoritative quota counts are verified inside the lock; commits immediately upon
+        successful insertion to release the lock and guarantee durable quota consumption.
+        """
         key = f"support_session:{client_ip}"
         event_type = "support.session_create"
         window = self.session_create_window
@@ -353,6 +358,13 @@ class PublicSupportRateLimiter:
     def record_message_submission(
         self, client_ip: str, session_id: uuid.UUID, db: Optional[Session] = None
     ) -> None:
+        """
+        Atomically records IP and session rate-limiting events under sorted advisory locks.
+        Acquires locks in strict ascending order, verifies authoritative counts inside
+        the transaction, adds both AuditEvents, and commits immediately.
+        Committing here releases advisory locks before downstream business and LLM processing,
+        preventing lock wait timeouts while ensuring durable quota consumption.
+        """
         ip_key = f"support_msg_ip:{client_ip}"
         session_key = f"support_msg_session:{session_id}"
         ip_limit = self.message_ip_limit

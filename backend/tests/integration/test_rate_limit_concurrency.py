@@ -19,7 +19,7 @@ from typing import List, Tuple
 
 import pytest
 from fastapi import HTTPException
-from sqlalchemy import text, select, func
+from sqlalchemy import text, select, func, event
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import OperationalError
 
@@ -93,8 +93,9 @@ def test_atomic_batch_commit_persists_both_events_in_postgresql():
 
 def test_atomic_rollback_on_failure_leaves_zero_events_in_postgresql(monkeypatch):
     """
-    Verifies that if an error occurs during submission (e.g. database commit failure),
-    the transaction is rolled back and zero partial events remain in PostgreSQL.
+    Verifies that if an error occurs during batch persistence (e.g. database commit failure
+    midway after rows have been flushed to PostgreSQL), the transaction is cleanly rolled back
+    and zero partial events remain in PostgreSQL.
     """
     monkeypatch.setattr(settings, "APP_ENV", "testing")
     limiter = PublicSupportRateLimiter()
@@ -104,16 +105,15 @@ def test_atomic_rollback_on_failure_leaves_zero_events_in_postgresql(monkeypatch
     session_key = f"support_msg_session:{session_id}"
 
     db: Session = TestingSessionLocal()
-    original_commit = db.commit
 
-    def failing_commit():
+    def failing_before_commit(session):
         raise OperationalError(
             "Simulated database failure during commit",
             params=None,
-            orig=Exception("Commit failed"),
+            orig=Exception("Commit failed midway"),
         )
 
-    db.commit = failing_commit
+    event.listen(db, "before_commit", failing_before_commit)
 
     try:
         # Pre-check zero events in PostgreSQL using a clean session
@@ -129,9 +129,6 @@ def test_atomic_rollback_on_failure_leaves_zero_events_in_postgresql(monkeypatch
         with pytest.raises(OperationalError):
             limiter.record_message_submission(test_ip, session_id, db=db)
 
-        # Restore original commit on the session
-        db.commit = original_commit
-
         # Query database using a fresh transaction/session to confirm zero partial events remain
         verify_db: Session = TestingSessionLocal()
         try:
@@ -143,6 +140,7 @@ def test_atomic_rollback_on_failure_leaves_zero_events_in_postgresql(monkeypatch
         finally:
             verify_db.close()
     finally:
+        event.remove(db, "before_commit", failing_before_commit)
         db.close()
         _cleanup_audit_keys([ip_key, session_key])
 
@@ -274,6 +272,72 @@ def test_concurrent_ip_quota_enforcement():
                 AuditEvent.metadata_json["key"].astext == ip_key,
             ).count()
             assert db_count == quota_limit
+        finally:
+            verify_db.close()
+    finally:
+        _cleanup_audit_keys(cleaned_keys)
+
+
+def test_concurrent_session_creation_quota_enforcement():
+    """
+    Proves that concurrent worker threads simultaneously creating customer support
+    sessions from the SAME IP address cannot exceed the configured session creation quota.
+    Uses threading.Barrier to ensure real simultaneous execution against PostgreSQL.
+    """
+    quota_limit = 3
+    num_threads = 8
+
+    limiter = PublicSupportRateLimiter(session_create_limit=quota_limit)
+    shared_ip = f"10.250.8.{uuid.uuid4().hex[:4]}"
+    key = f"support_session:{shared_ip}"
+    cleaned_keys = [key]
+
+    barrier = threading.Barrier(num_threads)
+    results: List[Tuple[bool, str]] = []
+    results_lock = threading.Lock()
+
+    def worker():
+        worker_db: Session = TestingSessionLocal()
+        try:
+            barrier.wait(timeout=5.0)
+            limiter.record_session_creation(shared_ip, db=worker_db)
+            with results_lock:
+                results.append((True, "success"))
+        except HTTPException as he:
+            with results_lock:
+                results.append((False, f"HTTP {he.status_code}: {he.detail}"))
+        except Exception as e:
+            with results_lock:
+                results.append((False, f"Error: {e}"))
+        finally:
+            worker_db.close()
+
+    try:
+        with ThreadPoolExecutor(max_workers=num_threads) as executor:
+            futures = [executor.submit(worker) for _ in range(num_threads)]
+            for f in futures:
+                f.result()
+
+        successes = [r for r in results if r[0]]
+        failures = [r for r in results if not r[0]]
+
+        # Exactly quota_limit requests must succeed
+        assert len(successes) == quota_limit, (
+            f"Expected exactly {quota_limit} successes, got {len(successes)}. Results: {results}"
+        )
+        # Remaining requests must fail with HTTP 429
+        assert len(failures) == num_threads - quota_limit
+        for _, detail in failures:
+            assert "429" in detail
+
+        # Exactly quota_limit events are persisted in PostgreSQL
+        verify_db: Session = TestingSessionLocal()
+        try:
+            db_count = verify_db.query(AuditEvent).filter(
+                AuditEvent.target_type == "public_support",
+                AuditEvent.metadata_json["key"].astext == key,
+            ).count()
+            assert db_count == quota_limit, f"Expected {quota_limit} rows in DB, found {db_count}"
         finally:
             verify_db.close()
     finally:
