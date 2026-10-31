@@ -14,9 +14,6 @@ import {
   ApiErrorResponse,
   SuggestedAction,
   ActionListResponse,
-  WhatsAppAccountStatus,
-  WhatsAppInboxMessage,
-  SimulateInboundMessagePayload,
   CustomerSupportMessage,
   CustomerSupportListResponse,
   PublicMerchantProfile,
@@ -360,25 +357,6 @@ export class ApiClient {
       method: 'POST',
       headers,
       body: JSON.stringify(payload),
-    });
-  }
-
-  public async getWhatsAppAccount(): Promise<WhatsAppAccountStatus> { return this.request<WhatsAppAccountStatus>('/whatsapp/account'); }
-  public async saveWhatsAppAccount(payload: { phone_number_id: string; business_account_id?: string; access_token: string }): Promise<WhatsAppAccountStatus> { return this.request<WhatsAppAccountStatus>('/whatsapp/account', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) }); }
-  public async listWhatsAppMessages(): Promise<{ items: WhatsAppInboxMessage[] }> { return this.request<{ items: WhatsAppInboxMessage[] }>('/whatsapp/messages'); }
-  public async sendWhatsAppReply(id: string, reply_text: string, force?: boolean): Promise<{ id: string; status: string; sent_at: string }> { return this.request<{ id: string; status: string; sent_at: string }>(`/whatsapp/messages/${id}/send`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ reply_text, force: Boolean(force) }) }); }
-  public async simulateInboundWhatsAppMessage(payload: SimulateInboundMessagePayload): Promise<WhatsAppInboxMessage> {
-    return this.request<WhatsAppInboxMessage>('/whatsapp/mock/simulate-inbound', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
-    });
-  }
-  public async simulateWhatsAppStatus(id: string, status: string, last_error?: string): Promise<{ id: string; status: string; last_error?: string | null; sent_at?: string | null }> {
-    return this.request<{ id: string; status: string; last_error?: string | null; sent_at?: string | null }>(`/whatsapp/mock/messages/${id}/status`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ status, last_error }),
     });
   }
 

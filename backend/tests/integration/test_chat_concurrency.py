@@ -6,9 +6,13 @@ from typing import List, Dict, Any, Optional
 
 import pytest
 from fastapi import HTTPException
+from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
 
 from backend.tests.conftest import TestingSessionLocal
+from backend.app.core.config import settings
+from backend.app.core.db_safety import validate_test_database_isolation
+from backend.app.db.session import check_database_connection
 from backend.app.core.security import hash_password
 from backend.app.models.user import User
 from backend.app.models.merchant_profile import MerchantProfile
@@ -53,6 +57,17 @@ class DelayedMockLLMProvider(LLMProvider):
             input_tokens=15,
             output_tokens=25,
         )
+
+
+@pytest.fixture(autouse=True)
+def require_test_database():
+    test_db_url = settings.DATABASE_URL_TEST
+    validate_test_database_isolation(test_db_url)
+    test_engine = create_engine(test_db_url)
+    if not check_database_connection(test_engine):
+        test_engine.dispose()
+        pytest.skip("Test database (DATABASE_URL_TEST) is unavailable; skipping chat concurrency tests.")
+    test_engine.dispose()
 
 
 @pytest.fixture

@@ -98,16 +98,6 @@ def enforce_test_db_override(request):
         yield
 
 
-@pytest.fixture(autouse=True)
-def isolate_whatsapp_mode_default(monkeypatch):
-    """
-    Ensures tests run with WHATSAPP_MODE='live' by default, isolating test
-    execution from local .env values (e.g. WHATSAPP_MODE=mock).
-    Tests specifically targeting mock mode explicitly set WHATSAPP_MODE='mock'.
-    """
-    monkeypatch.setattr(settings, "WHATSAPP_MODE", "live")
-
-
 @pytest.fixture
 def client(db_session: Session) -> TestClient:
     """

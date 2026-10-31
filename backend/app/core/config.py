@@ -47,21 +47,6 @@ class Settings(BaseSettings):
     LLM_TIMEOUT_SECONDS: int = 30
     LLM_MAX_RETRIES: int = 2
 
-    # WhatsApp Cloud API configuration; supply real secrets only through environment variables.
-    WHATSAPP_MODE: str = "live"
-    WHATSAPP_VERIFY_TOKEN: str = ""
-    WHATSAPP_APP_SECRET: str = ""
-    WHATSAPP_ENCRYPTION_KEY: str = ""
-    WHATSAPP_GRAPH_API_VERSION: str = "v22.0"
-
-    @field_validator("WHATSAPP_MODE")
-    @classmethod
-    def validate_whatsapp_mode(cls, v: str) -> str:
-        mode = v.strip().lower()
-        if mode not in ("live", "mock"):
-            raise ValueError("WHATSAPP_MODE must be either 'live' or 'mock'.")
-        return mode
-
     # Frontend & CORS
     FRONTEND_ORIGIN: str = "http://localhost:5173"
 

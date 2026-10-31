@@ -10,7 +10,6 @@ import { ActionsPage } from './pages/ActionsPage';
 import { SettingsPage } from './pages/SettingsPage';
 import { PrivacyPolicyPage } from './pages/PrivacyPolicyPage';
 import { TermsOfServicePage } from './pages/TermsOfServicePage';
-import { WhatsAppInboxPage } from './pages/WhatsAppInboxPage';
 import { SupportInboxPage } from './pages/SupportInboxPage';
 import { CustomerSupportPage } from './pages/CustomerSupportPage';
 
@@ -82,8 +81,6 @@ function AppShell() {
         {activeTab === 'actions' && <ActionsPage />}
 
         {(activeTab === 'support' || activeTab === '/support') && <SupportInboxPage />}
-
-        {activeTab === 'whatsapp' && <WhatsAppInboxPage />}
 
         {activeTab === 'settings' && <SettingsPage />}
 

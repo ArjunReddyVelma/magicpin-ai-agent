@@ -22,6 +22,7 @@ from alembic import command
 
 from backend.app.core.config import settings
 from backend.app.core.db_safety import validate_test_database_isolation
+from backend.app.db.session import check_database_connection
 from backend.app.core.support_rate_limiter import (
     prune_expired_support_rate_limit_events,
     DISPOSABLE_SUPPORT_EVENT_TYPES,
@@ -319,17 +320,20 @@ def test_migration_0004_downgrade_and_reupgrade_cycle():
     Verifies that migration 0004 can be rolled back safely (-1) and re-applied
     on the isolated test database without running downgrade base.
     """
-    validate_test_database_isolation()
     test_db_url = settings.DATABASE_URL_TEST
+    validate_test_database_isolation(test_db_url)
+
+    engine = create_engine(test_db_url)
+    if not check_database_connection(engine):
+        engine.dispose()
+        pytest.skip("Test database (DATABASE_URL_TEST) is unavailable; skipping migration test.")
 
     alembic_cfg = Config("backend/alembic.ini")
     alembic_cfg.set_main_option("sqlalchemy.url", test_db_url)
     alembic_cfg.set_main_option("script_location", "backend/migrations")
 
-    engine = create_engine(test_db_url)
-
-    # 1. Ensure at head
-    command.upgrade(alembic_cfg, "head")
+    # 1. Upgrade to 0004_rate_limit_optimization to test its specific rollback
+    command.upgrade(alembic_cfg, "0004_rate_limit_optimization")
     inspector = inspect(engine)
     indexes = {idx["name"] for idx in inspector.get_indexes("audit_events")}
     assert "ix_audit_events_rate_limiting" in indexes

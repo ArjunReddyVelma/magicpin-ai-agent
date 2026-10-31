@@ -1,9 +1,11 @@
 import uuid
+import pytest
 from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy import create_engine
 
 from backend.app.core.config import settings
 from backend.app.core.security import PostgreSQLLoginRateLimiter
+from backend.app.db.session import check_database_connection
 
 
 def test_postgresql_rate_limiter_cross_instance_sharing(db_session: Session):
@@ -41,6 +43,9 @@ def test_postgresql_rate_limiter_persistence_across_restarts():
     """
     key = f"192.168.1.10:brute_{uuid.uuid4().hex[:8]}@example.com"
     test_engine = create_engine(settings.DATABASE_URL_TEST)
+    if not check_database_connection(test_engine):
+        test_engine.dispose()
+        pytest.skip("Test database (DATABASE_URL_TEST) is unavailable; skipping restart persistence test.")
     SessionMaker = sessionmaker(bind=test_engine)
 
     # Simulate Process 1: 3 failures recorded
