@@ -7,7 +7,6 @@ from backend.app.models.conversation import Conversation
 from backend.app.models.message import Message
 from backend.app.models.suggested_action import SuggestedAction
 from backend.app.models.audit_event import AuditEvent
-from backend.app.models.whatsapp import WhatsAppAccount, WhatsAppMessage
 from backend.app.models.customer_support import (
     CustomerSupportSession,
     CustomerSupportMessage,
@@ -23,8 +22,6 @@ __all__ = [
     "Message",
     "SuggestedAction",
     "AuditEvent",
-    "WhatsAppAccount",
-    "WhatsAppMessage",
     "CustomerSupportSession",
     "CustomerSupportMessage",
 ]

@@ -26,8 +26,7 @@ The application enables merchants to maintain their business context and operati
 ### Deployment and feature status
 
 - The deployed application is configured on Render with a React frontend, FastAPI backend, and PostgreSQL database.
-- The WhatsApp integration MVP is part of the `feature/frontend-core` development line. It includes webhook validation, merchant account mapping, inbox/draft/send workflows, and delivery/error tracking; completing real Meta messaging still depends on valid Meta account status, webhook subscription/configuration, and merchant credentials.
-- **WhatsApp Mock Mode is not part of this deployment.** It remains on the separate `feature/whatsapp-mock-mode` branch for local development and testing only.
+- The application focuses on core merchant knowledge management, grounded AI chat, customer support inquiry handling, and human-in-the-loop review workflows.
 - The Render blueprint currently describes a free PostgreSQL database. Free Render databases are temporary and should not be used for durable production/customer data.
 
 ---
@@ -102,10 +101,10 @@ Generic AI chatbots often fail in this domain because they hallucinate store pol
 | **Failed-Turn Recovery & Idempotency** | Implemented | HTTP 502 recovery, retry message ID, idempotency keys |
 | **Chat-to-Action Generation** | Implemented | 7 integration tests passing; atomic row-locked transactions |
 | **Suggested Actions Review Queue** | Implemented | Paginated queue, state machine, zero side-effects verified |
-| **Frontend Single-Page Application** | Implemented | 84 frontend tests passing; lint and production build verified |
-| **Full-Stack Integration Audit** | Implemented | 205 backend tests passing (1 live smoke test skipped without API key); 84 frontend tests passing |
+| **Frontend Single-Page Application** | Implemented | 85 frontend tests passing; lint and production build verified |
+| **Full-Stack Integration Audit** | Implemented | Backend and frontend quality suites passing; lint and production build verified |
 | **Legal Pages (Privacy & Terms)** | Draft Implemented | Reachable in UI; operational disclosures with pending-review notices |
-| **Live Production Deployment** | Deployed separately from this feature branch | Render frontend/backend links listed above; WhatsApp Mock Mode remains local/review only |
+| **Live Production Deployment** | Deployed separately from this feature branch | Render frontend/backend links listed above |
 
 ---
 
@@ -371,7 +370,7 @@ The review queue allows merchants to review pending actions:
 - **Approve**: `POST /v1/actions/{id}/approve` -> updates `status="approved"`, sets `reviewed_at=NOW()`.
 - **Dismiss**: `POST /v1/actions/{id}/dismiss` -> updates `status="dismissed"`, sets `reviewed_at=NOW()`.
 - **State Conflict Prevention**: Actions already in an `approved` or `dismissed` state cannot be transitioned again; attempts return `409 CONFLICT` (`INVALID_ACTION_STATE`).
-- **No Side Effects**: Decisions are recorded purely for auditing and UI tracking. **The application never sends WhatsApp messages, SMS, emails, or initiates financial transactions.**
+- **No Side Effects**: Decisions are recorded purely for auditing and UI tracking. **The application never sends external messages (SMS, emails) or initiates financial transactions.**
 
 ---
 
@@ -509,22 +508,20 @@ The repository includes comprehensive automated test suites for both backend and
 ```bash
 .venv/bin/pytest backend/tests -v
 ```
-**Results**: **205 passed, 1 skipped** (1 live Groq smoke test skipped when live API key is not configured)
+**Results**: Comprehensive test coverage across unit, security, api, and integration suites:
 - Customer support web API and multi-tenant isolation tests
-- Rate limiting optimization functional index and ephemeral pruning tests
+- Rate limiting optimization functional index and concurrency tests
 - Chat action generation, review queue, and recovery idempotency tests
 - Context CRUD, optimistic concurrency, and conversation memory tests
 - Database isolation safeguards and deployment contract tests
-- WhatsApp Cloud API live and mock simulation tests
 
 ### Frontend Tests (Node.js Test Runner)
 ```bash
 npm --prefix frontend test
 ```
-**Results**: **84 passed**
+**Results**: **85 passed**
 - Customer Support public chat interface & session management (18 tests)
 - Merchant Support review inbox & human approval workflow (8 tests)
-- WhatsApp inbox & mock mode simulation controls (6 tests)
 - Actions Review Queue & Decision Recording (7 tests)
 - Context Management & Optimistic Concurrency (6 tests)
 - Merchant Profile & Dashboard (5 tests)
@@ -556,20 +553,18 @@ The repository defines an automated CI workflow in [`.github/workflows/ci.yml`](
 ## 16. Current Limitations and Future Improvements
 
 ### Current Limitations
-1. **WhatsApp Mock Mode is not deployed**: The mock inbox simulation exists on `feature/whatsapp-mock-mode` for local development/testing only. It records simulated delivery locally and does not contact Meta Graph API. Simulated delivery state is not proof of external delivery.
-2. **Synchronous Chat Turns**: Message turns execute as synchronous request/response HTTP cycles. Token streaming (Server-Sent Events / WebSockets) is not implemented in the current MVP.
-3. **Single User per Merchant**: The data model supports 1 user owning 1 merchant profile. Multi-user organizations and role-based access control (e.g., manager vs. support agent) are planned for a subsequent phase.
-4. **Single Provider Configuration**: Provider selection is configured globally via environment variables rather than on a per-merchant basis.
-5. **Relational Keyword Context Retrieval**: Context items are retrieved via active status and exact/metadata queries. High-dimensional vector embeddings and similarity search (e.g., `pgvector`) are not yet integrated.
-6. **WhatsApp Cloud API External Dispatch**: Outbound message sending requires valid Meta business credentials, phone number ID, and webhook subscription. In mock mode (`WHATSAPP_MODE=mock`), dispatch is simulated locally and Meta API is not contacted.
-7. **Default Branch History Alignment**: The GitHub repository's default branch `main` contains an unrelated Git history from an early single-directory prototype. Active development and integration occur on `feature/frontend-core`.
+1. **Synchronous Chat Turns**: Message turns execute as synchronous request/response HTTP cycles. Token streaming (Server-Sent Events / WebSockets) is not implemented in the current MVP.
+2. **Single User per Merchant**: The data model supports 1 user owning 1 merchant profile. Multi-user organizations and role-based access control (e.g., manager vs. support agent) are planned for a subsequent phase.
+3. **Single Provider Configuration**: Provider selection is configured globally via environment variables rather than on a per-merchant basis.
+4. **Relational Keyword Context Retrieval**: Context items are retrieved via active status and exact/metadata queries. High-dimensional vector embeddings and similarity search (e.g., `pgvector`) are not yet integrated.
+5. **Default Branch History Alignment**: The GitHub repository's default branch `main` contains an unrelated Git history from an early single-directory prototype. Active development and integration occur on `feature/frontend-core`.
 
 ### Planned Improvements
 - Integration of `pgvector` for semantic context retrieval across extensive merchant catalogs.
 - Server-Sent Events (SSE) streaming for real-time token display.
 - Multi-user merchant teams with granular role permissions.
 - Outbound messaging integration with merchant confirmation webhooks.
-- Multi-channel support (inbound WhatsApp/Zendesk integration).
+- Multi-channel customer messaging (potential future WhatsApp Business API or third-party messaging gateway integration).
 - Reconcile `main` branch with the modular architecture baseline.
 
 ---
@@ -606,7 +601,7 @@ Follow these exact steps to run the complete Magicpin AI Agent full-stack applic
 ```bash
 git clone https://github.com/ArjunReddyVelma/magicpin-ai-agent.git
 cd magicpin-ai-agent
-git checkout feature/whatsapp-mock-mode
+git checkout feature/frontend-core
 ```
 
 ### 2. Create and Activate the Python Virtual Environment

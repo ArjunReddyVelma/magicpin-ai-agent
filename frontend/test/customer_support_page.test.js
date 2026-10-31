@@ -612,7 +612,7 @@ test('Customer Support: untrusted text with HTML tags is preserved as plain stri
 });
 
 // ---------------------------------------------------------------------------
-// 18. Existing merchant inbox, auth, and WhatsApp functionality remains intact
+// 18. Existing merchant inbox and auth functionality remains intact
 // ---------------------------------------------------------------------------
 test('Customer Support: public 401 does not clear merchant authentication state', async () => {
   let merchantLoggedOut = false;

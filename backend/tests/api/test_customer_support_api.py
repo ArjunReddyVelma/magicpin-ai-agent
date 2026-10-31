@@ -704,17 +704,17 @@ def test_invalid_token_does_not_consume_session_quota(
 
 
 # ---------------------------------------------------------------------------
-# 16. Regression: WhatsApp and copilot continue to pass
+# 16. Regression: Health probe passes and removed WhatsApp routes return 404
 # ---------------------------------------------------------------------------
-def test_regression_whatsapp_and_health(client: TestClient):
+def test_regression_health_and_whatsapp_removed(client: TestClient):
     # Health check
     h = client.get("/v1/healthz")
     assert h.status_code == 200
     assert h.json()["status"] == "ok"
 
-    # WhatsApp unauthenticated check
+    # WhatsApp route must not exist (404)
     wa = client.get("/v1/whatsapp/account")
-    assert wa.status_code == 401
+    assert wa.status_code == 404
 
 
 # ---------------------------------------------------------------------------
@@ -1048,7 +1048,7 @@ def test_closed_session_allows_history_read_while_blocking_new_inquiries(
     assert data["items"][0]["id"] == m["id"]
 
 
-def test_concurrent_delivery_attempts_protection():
+def test_concurrent_delivery_attempts_protection(db_session: Session):
     from concurrent.futures import ThreadPoolExecutor
     from backend.tests.conftest import TestingSessionLocal
     from backend.app.services.customer_support_service import CustomerSupportService

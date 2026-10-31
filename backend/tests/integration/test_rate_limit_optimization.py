@@ -19,9 +19,12 @@ from sqlalchemy.orm import Session
 
 from alembic.config import Config
 from alembic import command
+from alembic.migration import MigrationContext
+from alembic.script import ScriptDirectory
 
 from backend.app.core.config import settings
 from backend.app.core.db_safety import validate_test_database_isolation
+from backend.app.db.session import check_database_connection
 from backend.app.core.support_rate_limiter import (
     prune_expired_support_rate_limit_events,
     DISPOSABLE_SUPPORT_EVENT_TYPES,
@@ -316,38 +319,69 @@ def test_prune_script_dry_run_cli(db_session: Session):
 
 def test_migration_0004_downgrade_and_reupgrade_cycle():
     """
-    Verifies that migration 0004 can be rolled back safely (-1) and re-applied
-    on the isolated test database without running downgrade base.
+    Verifies that migration 0004 can be applied, rolled back safely to 0003,
+    and re-applied on the isolated test database regardless of initial migration state.
     """
-    validate_test_database_isolation()
     test_db_url = settings.DATABASE_URL_TEST
+    validate_test_database_isolation(test_db_url)
+
+    engine = create_engine(test_db_url)
+    if not check_database_connection(engine):
+        engine.dispose()
+        pytest.skip("Test database (DATABASE_URL_TEST) is unavailable; skipping migration test.")
 
     alembic_cfg = Config("backend/alembic.ini")
     alembic_cfg.set_main_option("sqlalchemy.url", test_db_url)
     alembic_cfg.set_main_option("script_location", "backend/migrations")
 
-    engine = create_engine(test_db_url)
+    # 1. Explicitly establish revision 0003 regardless of initial database migration state
+    target_base_rev = "0003_web_customer_support"
+    with engine.connect() as conn:
+        context = MigrationContext.configure(conn)
+        current_rev = context.get_current_revision()
 
-    # 1. Ensure at head
-    command.upgrade(alembic_cfg, "head")
-    inspector = inspect(engine)
-    indexes = {idx["name"] for idx in inspector.get_indexes("audit_events")}
-    assert "ix_audit_events_rate_limiting" in indexes
+    script = ScriptDirectory.from_config(alembic_cfg)
+    all_revs = [r.revision for r in script.walk_revisions()]
+    target_idx = all_revs.index(target_base_rev)
+    descendants = set(all_revs[:target_idx])
 
-    # 2. Downgrade -1 (rolls back 0004 to 0003)
-    command.downgrade(alembic_cfg, "-1")
+    if current_rev != target_base_rev:
+        if current_rev in descendants:
+            command.downgrade(alembic_cfg, target_base_rev)
+        else:
+            command.upgrade(alembic_cfg, target_base_rev)
+
+    # Verify that at 0003, the rate-limiting index does not yet exist
     inspector = inspect(engine)
-    remaining_indexes = {idx["name"] for idx in inspector.get_indexes("audit_events")}
-    assert "ix_audit_events_rate_limiting" not in remaining_indexes, (
-        "ix_audit_events_rate_limiting should have been dropped by downgrade -1"
+    indexes_at_0003 = {idx["name"] for idx in inspector.get_indexes("audit_events")}
+    assert "ix_audit_events_rate_limiting" not in indexes_at_0003
+
+    # 2. Upgrade to 0004_rate_limit_optimization and verify the index exists
+    command.upgrade(alembic_cfg, "0004_rate_limit_optimization")
+    inspector = inspect(engine)
+    indexes_at_0004 = {idx["name"] for idx in inspector.get_indexes("audit_events")}
+    assert "ix_audit_events_rate_limiting" in indexes_at_0004
+
+    # 3. Downgrade to 0003 and verify the index is removed
+    command.downgrade(alembic_cfg, target_base_rev)
+    inspector = inspect(engine)
+    indexes_after_downgrade = {idx["name"] for idx in inspector.get_indexes("audit_events")}
+    assert "ix_audit_events_rate_limiting" not in indexes_after_downgrade, (
+        "ix_audit_events_rate_limiting should have been dropped by downgrade to 0003"
     )
-    # Underlying tables and indexes must remain intact
-    assert "ix_audit_events_merchant_created" in remaining_indexes
+    # Underlying tables and base indexes must remain intact
+    assert "ix_audit_events_merchant_created" in indexes_after_downgrade
 
-    # 3. Re-upgrade to head
-    command.upgrade(alembic_cfg, "head")
+    # 4. Re-upgrade to 0004 and verify the index is restored
+    command.upgrade(alembic_cfg, "0004_rate_limit_optimization")
     inspector = inspect(engine)
     recreated_indexes = {idx["name"] for idx in inspector.get_indexes("audit_events")}
     assert "ix_audit_events_rate_limiting" in recreated_indexes
+
+    # 5. Re-upgrade to head so the test database is left in the latest schema state
+    command.upgrade(alembic_cfg, "head")
+    inspector = inspect(engine)
+    head_indexes = {idx["name"] for idx in inspector.get_indexes("audit_events")}
+    assert "ix_audit_events_rate_limiting" in head_indexes
 
     engine.dispose()
