@@ -93,9 +93,9 @@ def test_atomic_batch_commit_persists_both_events_in_postgresql():
 
 def test_atomic_rollback_on_failure_leaves_zero_events_in_postgresql(monkeypatch):
     """
-    Verifies that if an error occurs during batch persistence (e.g. database commit failure
-    midway after rows have been flushed to PostgreSQL), the transaction is cleanly rolled back
-    and zero partial events remain in PostgreSQL.
+    Verifies that if an error occurs during batch persistence after pending audit-event rows
+    have been flushed to PostgreSQL but before commit completes, the transaction is cleanly
+    rolled back and zero partial events remain in PostgreSQL.
     """
     monkeypatch.setattr(settings, "APP_ENV", "testing")
     limiter = PublicSupportRateLimiter()
@@ -106,14 +106,17 @@ def test_atomic_rollback_on_failure_leaves_zero_events_in_postgresql(monkeypatch
 
     db: Session = TestingSessionLocal()
 
-    def failing_before_commit(session):
+    flush_called = []
+
+    def failing_after_flush(session, flush_context):
+        flush_called.append(True)
         raise OperationalError(
-            "Simulated database failure during commit",
+            "Simulated database failure after flush before commit",
             params=None,
-            orig=Exception("Commit failed midway"),
+            orig=Exception("Database connection severed after flush"),
         )
 
-    event.listen(db, "before_commit", failing_before_commit)
+    event.listen(db, "after_flush", failing_after_flush)
 
     try:
         # Pre-check zero events in PostgreSQL using a clean session
@@ -125,11 +128,13 @@ def test_atomic_rollback_on_failure_leaves_zero_events_in_postgresql(monkeypatch
         finally:
             check_db.close()
 
-        # Execute submission with failing commit; verify it raises OperationalError
+        # Execute submission with failing flush/commit; verify it raises OperationalError
         with pytest.raises(OperationalError):
             limiter.record_message_submission(test_ip, session_id, db=db)
 
-        # Query database using a fresh transaction/session to confirm zero partial events remain
+        assert len(flush_called) > 0, "Expected after_flush listener to fire after row flush"
+
+        # Query database using a fresh independent transaction/session to confirm zero partial events remain
         verify_db: Session = TestingSessionLocal()
         try:
             count_after = verify_db.query(AuditEvent).filter(
@@ -140,7 +145,7 @@ def test_atomic_rollback_on_failure_leaves_zero_events_in_postgresql(monkeypatch
         finally:
             verify_db.close()
     finally:
-        event.remove(db, "before_commit", failing_before_commit)
+        event.remove(db, "after_flush", failing_after_flush)
         db.close()
         _cleanup_audit_keys([ip_key, session_key])
 

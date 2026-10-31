@@ -50,8 +50,10 @@ def create_customer_session(
     # 1. support_rate_limiter.check_session_creation: Fast-path non-locking check.
     # 2. support_rate_limiter.record_session_creation: Acquires transaction-scoped
     #    PostgreSQL advisory lock, re-evaluates quota, inserts AuditEvent, and commits.
-    #    Committing immediately releases the advisory lock prior to merchant lookup
-    #    and token hashing, keeping lock duration strictly sub-millisecond.
+    #    Advisory locks are transaction-scoped and released when the rate-limit
+    #    transaction commits or rolls back. Completing this transaction before downstream
+    #    merchant lookup and token hashing minimizes lock holding time; actual lock
+    #    duration depends on database execution and contention.
     # 3. service.create_customer_session: Executes business transaction (merchant
     #    validation, session token generation, cryptographic hashing, and persistence).
     # -------------------------------------------------------------------------
@@ -97,9 +99,12 @@ def submit_customer_inquiry(
     # 3. support_rate_limiter.record_message_submission: Acquires bounded transaction-scoped
     #    PostgreSQL advisory locks (sorted ascending to prevent deadlocks), verifies
     #    authoritative counts inside lock, batch-inserts AuditEvents, and COMMITS immediately.
-    #    - Concurrency Rationale: Committing immediately releases transaction-scoped
-    #      PostgreSQL advisory locks (pg_advisory_xact_lock) prior to slow downstream
-    #      LLM generation, preventing lock wait timeouts (3.0s) and thread starvation.
+    #    - Concurrency Rationale: Advisory locks are transaction-scoped and released
+    #      when the rate-limit transaction commits or rolls back. Completing this
+    #      transaction before downstream inquiry persistence and LLM generation ensures
+    #      locks are not held across external API calls, preventing lock wait timeouts
+    #      (3.0s) and thread starvation; actual lock duration depends on database
+    #      execution and contention.
     #    - Security Rationale: Quota consumption is durable prior to business processing.
     #      A downstream failure or malformed payload cannot be exploited to retry
     #      indefinitely without consuming quota.
